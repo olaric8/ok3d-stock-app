@@ -1,0 +1,35 @@
+# ---------------------------------------------------------------------------
+# OK3D Stock App - dependencies  (built by LemonLogic)
+#
+#   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+#
+# Note on oauth2client
+# --------------------
+# The brief listed `oauth2client`, which was the standard Google auth helper for
+# years. It is now deprecated and, more importantly, **gspread 6.x removed its
+# oauth2client-based authorize() path entirely** -- passing oauth2client
+# credentials to modern gspread raises. This app therefore authenticates with
+# `google-auth` (the supported replacement, and the same service-account JSON
+# file either way).
+#
+# oauth2client is deliberately NOT installed: keeping it would add a deprecated,
+# unmaintained dependency that no code path touches. If you ever pin gspread<6,
+# add `oauth2client>=4.1.3` back at that point.
+# ---------------------------------------------------------------------------
+
+# --- required -------------------------------------------------------------- #
+streamlit>=1.38,<2.0
+pandas>=2.2
+
+# --- Google Sheets access -------------------------------------------------- #
+gspread>=6.1
+google-auth>=2.35
+
+# --- Excel readers used by the data-migration scripts ---------------------- #
+# import_from_recent.py hand-rolls its xlsx reading (values + bold flags) and
+# needs nothing extra. fix_opening_balances.py reads the multi-sheet production
+# workbook's 'Stock Summary' tab, which openpyxl handles properly.
+openpyxl>=3.1
+
+# --- test-only (verify_engine.py needs nothing beyond the above) ----------- #
+# pytest>=8.0          # optional, if you convert verify_engine.py to pytest later

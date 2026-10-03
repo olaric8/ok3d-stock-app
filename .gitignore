@@ -1,0 +1,20 @@
+# OK3D Stock App - ignored files
+
+# --- Google service-account keys: never commit these ---
+credentials.json
+*service-account*.json
+*.key.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+verify-out.txt
+
+# --- local scratch (pip/Streamlit temp redirected here) ---
+.piptmp/
+
+# --- exports produced by the app ---
+*.log
