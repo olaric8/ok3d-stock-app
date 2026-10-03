@@ -5,6 +5,15 @@ credentials.json
 *service-account*.json
 *.key.json
 
+# --- Streamlit secrets: the SAME private key, in TOML form ---
+# make-secrets-block.ps1 writes .streamlit/secrets.toml, and a local Streamlit
+# run picks it up through st.secrets. It must never reach a repository.
+secrets.toml
+**/secrets.toml
+
+# The template stays tracked on purpose -- it holds no real values.
+!.streamlit/secrets.toml.example
+
 # --- Python ---
 __pycache__/
 *.py[cod]
