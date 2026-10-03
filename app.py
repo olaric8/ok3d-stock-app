@@ -247,150 +247,131 @@ def load_backend(mode: str, spreadsheet_id: str) -> tuple[Optional[StockBackend]
 # --------------------------------------------------------------------------- #
 
 with st.sidebar:
-    st.markdown("### 🔌 Data source")
-
-    mode_choice = st.radio(
-        "Connect to",
-        options=["demo", "live"],
-        format_func=lambda m: "Demo data (offline)" if m == "demo" else "Shadow Copy Google Sheet",
-        index=0 if st.session_state["mode"] == "demo" else 1,
-        key="mode_radio",
-        help=(
-            "Demo data lives in memory and is perfect for training staff. "
-            "Shadow Copy reads and writes the isolated test workbook."
-        ),
-    )
-    st.session_state["mode"] = mode_choice
-
-    if mode_choice == "live":
-        st.session_state["spreadsheet_id"] = st.text_input(
-            "Spreadsheet ID",
-            value=st.session_state["spreadsheet_id"],
-            placeholder="paste the id from the /d/<id>/edit URL",
-            help="The id of the OK3D Shadow Copy workbook -- never the live trading sheet.",
-        ).strip()
-        st.caption(f"env override: `{SPREADSHEET_ID_ENV}`")
+    # There is deliberately NO demo/live switch. A staff member could park the
+    # app in demo mode, and every sale they recorded would vanish into memory at
+    # the end of the session. The app always targets the workbook; if it cannot
+    # be reached it says so loudly rather than quietly going offline.
+    st.session_state["mode"] = "live"
 
     creds = credentials_summary()
-    if mode_choice == "live":
-        # A local run reads credentials.json from the project root; a cloud run
-        # has no such file and reads the key from Streamlit secrets instead.
-        # Saying "credentials.json not found" on the cloud sends people looking
-        # for a file that is not supposed to exist there, so name the right
-        # remedy for each environment.
-        # There is no credentials.json on a cloud deployment by design -- the key
-        # arrives through Streamlit secrets. credentials_path_from_env() is
-        # already imported, so this needs no extra helper.
-        on_cloud = not creds.get("present") and not credentials_path_from_env().exists()
-        if creds.get("present"):
-            where = "credentials.json" if creds.get("path", "").endswith("credentials.json") else "Streamlit secrets"
-            st.success(f"Service account: {creds.get('client_email', 'n/a')}  (via {where})")
-        elif on_cloud:
-            st.error("No service-account key configured")
+    creds_path = credentials_path_from_env()
+    on_cloud = not creds.get("present") and not creds_path.exists()
+
+    # ---------------------------------------------------------------- setup -- #
+    # Shown only when something is genuinely wrong, so it stays actionable.
+    if not creds.get("present"):
+        st.error("Setup: no service-account key")
+        if on_cloud:
             st.caption(
-                "This looks like a cloud deployment: there is no credentials.json here "
-                "by design. Add the key to **Settings → Secrets** (see "
-                "`.streamlit/secrets.toml.example`), or run "
-                "`make-secrets-block.ps1` locally to build the block."
+                "There is no `credentials.json` here by design on a cloud deployment. "
+                "Add the key in **Settings \u2192 Secrets**, or rebuild the block locally "
+                "with `make-secrets-block-b64.ps1`."
             )
         else:
-            st.error("credentials.json not found in the project root")
             st.caption(
-                "Local run: save the service-account key as `credentials.json` beside app.py, "
-                "or set `OK3D_GOOGLE_CREDENTIALS` to its path."
+                "Save the service-account key as `credentials.json` beside `app.py`, or "
+                "point `OK3D_GOOGLE_CREDENTIALS` at it."
             )
 
-        if not st.session_state.get("spreadsheet_id"):
-            st.warning("No spreadsheet id set")
-            # Distinguish "absent from secrets" from "present but empty" --
-            # they have different fixes and looked identical before.
+    if not st.session_state.get("spreadsheet_id"):
+        # The box appears ONLY when no id resolved. An always-visible field lets
+        # anyone retarget the app to a different workbook mid-shift.
+        st.session_state["spreadsheet_id"] = st.text_input(
+            "Spreadsheet ID",
+            value="",
+            placeholder="paste the id from the /d/<id>/edit URL",
+            help="The id of the OK3D Shadow Copy workbook - never the live trading sheet.",
+        ).strip()
+        if not st.session_state["spreadsheet_id"]:
+            st.warning("Setup: no spreadsheet id")
             try:
                 _keys = set(dict(st.secrets).keys())
             except Exception:  # noqa: BLE001
                 _keys = set()
             if "spreadsheet_id" in _keys:
                 st.caption(
-                    "`spreadsheet_id` IS present in secrets but resolved to an empty "
-                    "value. Check that line for a stray quote or trailing text."
+                    "Found `spreadsheet_id` in secrets but it resolved to an empty value - "
+                    "check that line for a stray quote or trailing text."
                 )
             else:
-                st.caption(
-                    "`spreadsheet_id` is not among the keys the app can see. It must be the "
-                    "**first line** of **Settings → Secrets**."
-                )
+                st.caption("`spreadsheet_id` is not among the keys the app can see.")
 
+    # ------------------------------------------------------------ connection -- #
     backend, error_kind, error_message = load_backend(
         st.session_state["mode"], st.session_state["spreadsheet_id"]
     )
 
     if backend is None:
-        # A live attempt failed -- surface it, then keep the app usable.
+        # Surface the failure, then keep the workspace usable rather than
+        # showing staff a dead page.
         titles = {
-            "safety": "🛑 Safety boundary blocked this connection",
-            "schema": "🧱 Sheet layout does not match the agreed schema",
-            "config": "⚙️ Setup incomplete",
-            "engine": "⚠️ Engine error",
-            "unexpected": "⚠️ Unexpected error",
+            "safety": "Safety boundary blocked this connection",
+            "schema": "Sheet layout does not match the agreed schema",
+            "config": "Setup incomplete",
+            "engine": "Engine error",
+            "unexpected": "Unexpected error",
         }
         st.error(titles.get(error_kind, "Connection failed"))
         with st.expander("Full detail", expanded=error_kind in {"safety", "schema"}):
             st.code(error_message, language=None)
-        st.info("Falling back to demo data so the workspace stays usable.")
+
+            # The secrets read-out lives inside the error path only: it names the
+            # keys the app can see, which is what fixes a broken deployment and is
+            # of no use to anyone else.
+            st.markdown("**Secret keys visible to the app**")
+            try:
+                visible = dict(st.secrets)
+            except Exception as exc:  # noqa: BLE001
+                visible = {}
+                st.write(f"st.secrets unreadable: {type(exc).__name__}: {exc}")
+            if not visible:
+                st.write("Nothing loaded - the secrets file may be missing or invalid TOML.")
+            else:
+                for key in sorted(visible):
+                    value = visible[key]
+                    if isinstance(value, dict):
+                        detail = f"table, {len(value)} field(s)"
+                    else:
+                        text = str(value)
+                        # Shape only, never content.
+                        detail = f"{len(text)} chars" if text else "EMPTY"
+                    st.write(f"- `{key}` - {detail}")
+
+        st.info("Showing in-memory sample data until the connection is fixed.")
         backend = DemoBackend()
 
-    st.divider()
-    st.markdown("### 👤 Staff")
-    st.session_state["staff"] = st.text_input("Handled by", value=st.session_state["staff"])
+    connected = not backend.is_demo
+    st.markdown(
+        f"<div style='display:flex;align-items:center;gap:.5rem;margin:.35rem 0'>"
+        f"<span style='width:.55rem;height:.55rem;border-radius:50%;"
+        f"background:{'#12704F' if connected else '#D63031'};display:inline-block'></span>"
+        f"<b>{'Connected' if connected else 'Not connected'}</b></div>",
+        unsafe_allow_html=True,
+    )
+    if creds.get("present"):
+        st.caption(f"`{creds.get('client_email', 'n/a')}`")
+    if connected:
+        st.caption(
+            f"`{backend.spreadsheet_title}` \u00b7 last read {backend.last_read_utc or '\u2014'}"
+        )
+    else:
+        st.caption("Reading sample data - nothing is being saved.")
 
     st.divider()
-    st.markdown("### 🔄 Data")
-    if st.button("Refresh from source", width='stretch'):
+
+    # ----------------------------------------------------------------- staff -- #
+    st.session_state["staff"] = st.text_input(
+        "Handled by",
+        value=st.session_state["staff"],
+        help="Recorded against every sale in the Sales Ledger.",
+    )
+
+    st.divider()
+
+    # ------------------------------------------------------------------ data -- #
+    if st.button("Refresh from source", width="stretch"):
         load_backend.clear()
         st.rerun()
-    if isinstance(backend, DemoBackend):
-        if st.button("Reset demo data", width='stretch'):
-            backend.reset()
-            st.session_state["receipt"] = None
-            st.rerun()
-
-    st.divider()
-    if backend.is_demo:
-        st.caption(f"**{backend.label}**")
-    else:
-        st.caption(f"**{backend.label}**")
-        st.caption(f"Workbook: `{backend.spreadsheet_title}`")
-    st.caption(f"Last read: {backend.last_read_utc or '—'}")
-
-    with st.expander("Secrets diagnostics"):
-        try:
-            visible = dict(st.secrets)
-        except Exception as exc:  # noqa: BLE001
-            visible = {}
-            st.write(f"st.secrets unreadable: {type(exc).__name__}: {exc}")
-
-        if not visible:
-            st.write("**st.secrets is empty** - nothing was loaded on this run.")
-            st.caption(
-                "If a secrets block IS saved, its TOML is probably invalid, so Streamlit "
-                "discards the whole file. The editor shows a red \"Invalid format\" "
-                "message when that happens."
-            )
-        else:
-            st.write(f"**{len(visible)} secret key(s) visible to the app:**")
-            for key in sorted(visible):
-                value = visible[key]
-                if isinstance(value, dict):
-                    detail = f"table with {len(value)} field(s)"
-                else:
-                    text = str(value)
-                    # Only shape, never content, so this is safe to screenshot.
-                    detail = f"{len(text)} chars, starts {text[:3]!r}" if text else "EMPTY"
-                mark = "✅" if key == "spreadsheet_id" else "•"
-                st.write(f"{mark} `{key}` - {detail}")
-
-            if "spreadsheet_id" not in visible:
-                st.error("`spreadsheet_id` is NOT among the keys above.")
-
 
 # --------------------------------------------------------------------------- #
 # Hero
@@ -746,14 +727,51 @@ with sub_batch:
                     }
                 )
 
-            st.dataframe(
-                rows_for_view,
-                hide_index=True,
-                width="stretch",
-                column_config={"Qty": st.column_config.NumberColumn(format="%d"),
-                               "In stock": st.column_config.NumberColumn(format="%d"),
-                               "After": st.column_config.NumberColumn(format="%d")},
-            )
+            # One row per basket line, each with its own Remove control. A single
+            # "Clear basket" button forced staff to rebuild the whole order to
+            # drop one item, which is not how a customer changes their mind.
+            head = st.columns([6, 2, 1])
+            head[0].caption("**Product**")
+            head[1].caption("**Qty**")
+            head[2].caption("**Remove**")
+
+            for index, item in enumerate(list(basket)):
+                line = next(
+                    (r for r in rows_for_view if r["#"] == index + 1),
+                    None,
+                )
+                row_cols = st.columns([6, 2, 1])
+                with row_cols[0]:
+                    if line is None:
+                        st.markdown(f"⚠️ ~~{item['product']}~~")
+                    else:
+                        flag = "" if line["Status"] == "🟢 ok" else f" · {line['Status']}"
+                        st.markdown(
+                            f"**{line['Product']}**  \n"
+                            f"<span style='opacity:.7;font-size:.85em'>"
+                            f"{line['In stock']} in stock → {line['After']} after{flag}</span>",
+                            unsafe_allow_html=True,
+                        )
+                with row_cols[1]:
+                    dec_col, qty_col, inc_col = st.columns(3)
+                    if dec_col.button("−", key=f"basket-dec-{index}", help="One fewer"):
+                        item["quantity"] = max(1, int(item["quantity"]) - 1)
+                        st.session_state["basket"] = basket
+                        st.rerun()
+                    qty_col.markdown(
+                        f"<div style='text-align:center;font-weight:700;padding-top:.35rem'>"
+                        f"{int(item['quantity'])}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    if inc_col.button("+", key=f"basket-inc-{index}", help="One more"):
+                        item["quantity"] = int(item["quantity"]) + 1
+                        st.session_state["basket"] = basket
+                        st.rerun()
+                with row_cols[2]:
+                    if st.button("🗑️", key=f"basket-remove-{index}", help="Remove this line"):
+                        basket.pop(index)
+                        st.session_state["basket"] = basket
+                        st.rerun()
 
             summary_cols = st.columns(3)
             summary_cols[0].metric("Product lines", f"{len(rows_for_view)}")

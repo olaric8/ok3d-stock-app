@@ -219,8 +219,11 @@ def main() -> int:
     stub = build_stub()
     saved = sys.modules.get("streamlit")
     sys.modules["streamlit"] = stub
+    # Captured so the cloud-path test below can clear load_backend's cache, which
+    # is otherwise shared across every run in this process.
+    _app_globals: dict = {}
     try:
-        runpy.run_path(str(app_path), run_name="__main__")
+        _app_globals = runpy.run_path(str(app_path), run_name="__main__")
     except Exception:
         traceback.print_exc()
         print("\n  [FAIL] app.py raised while rendering")
@@ -242,8 +245,9 @@ def main() -> int:
 
     # Containers qualify: `col1.metric(...)` counts as exercising `metric`.
     families = {name.split(".")[-1] for name in unique}
+    # "radio" is NOT required: the demo/live switch was removed on purpose.
     required = {"tabs", "columns", "selectbox", "number_input", "text_input", "dataframe",
-                "metric", "markdown", "download_button", "radio", "form_submit_button"}
+                "metric", "markdown", "download_button", "form_submit_button"}
     missing = required - families
     check("all key widget families used", not missing, f"missing {sorted(missing)}")
 
@@ -273,6 +277,16 @@ def main() -> int:
     check("no dead total_value metric in the basket",
           "total_value" not in _batch)
 
+    check("no demo-mode reset button in the sidebar",
+          "Reset demo data" not in app_source)
+    check("no demo/live radio remains",
+          'key="mode_radio"' not in app_source)
+    check("basket lines carry their own remove control",
+          'key=f"basket-remove-{index}"' in app_source)
+    check("basket lines can adjust quantity",
+          'key=f"basket-inc-{index}"' in app_source
+          and 'key=f"basket-dec-{index}"' in app_source)
+
     check("no deprecated use_container_width remains",
           "use_container_width" not in app_source,
           f"{app_source.count('use_container_width')} occurrence(s)")
@@ -292,7 +306,11 @@ def main() -> int:
     (cloud_root / ".streamlit").mkdir(parents=True, exist_ok=True)
     for _name in ("app.py", "sheets_engine.py", "demo_backend.py"):
         _shutil.copy(here / _name, cloud_root / _name)
-    _shutil.copy(here / ".streamlit" / "config.toml", cloud_root / ".streamlit" / "config.toml")
+    # Deliberately WITHOUT the [ok3d] spreadsheet_id: this scenario is a cloud
+    # deployment that has no configuration at all.
+    (cloud_root / ".streamlit" / "config.toml").write_text(
+        "[server]\nheadless = true\n", encoding="utf-8"
+    )
 
     import sheets_engine as _se
 
@@ -300,35 +318,61 @@ def main() -> int:
     _saved_env_id = os.environ.pop("OK3D_SPREADSHEET_ID", None)
     _saved_env_creds = os.environ.pop("OK3D_GOOGLE_CREDENTIALS", None)
     _saved_secrets_reader = _se._st_secrets
+    _saved_config_file = _se.CONFIG_FILE
     _se.CREDENTIALS_FILE = cloud_root / "credentials.json"   # deliberately absent
-    # Also neutralise st.secrets. Without this the test still reads the project's
-    # real .streamlit/secrets.toml, finds a key, and stops simulating the cloud --
-    # which is exactly how it silently passed for the wrong reason.
+    # CONFIG_FILE is read from the module at import time, so it must be redirected
+    # as well. Otherwise this test finds the workspace's real spreadsheet id in
+    # config.toml while credentials.json points at a temp path -- a combination no
+    # real deployment has -- and reports the credentials error as if it passed.
+    _se.CONFIG_FILE = cloud_root / ".streamlit" / "config.toml"
+    (cloud_root / ".streamlit" / "config-empty.toml").write_text(
+        "[server]\nheadless = true\n", encoding="utf-8"
+    )
+    # Neutralise st.secrets too, or the project's real secrets.toml is read.
     _se._st_secrets = lambda: {}
 
     try:
+        # CRITICAL: load_backend is decorated with @st.cache_resource. The main
+        # run above already cached a LIVE backend under the same arguments
+        # ("live", ""), so without this clear the cloud run receives that cached
+        # backend, renders as connected, and the test silently measures the wrong
+        # environment while reporting a pass.
+        _cached_loader = _app_globals.get("load_backend")
+        check("load_backend cache handle captured for isolation",
+              _cached_loader is not None)
+        if _cached_loader is not None and hasattr(_cached_loader, "clear"):
+            _cached_loader.clear()
+
         at_cloud = _AppTest.from_file(str(cloud_root / "app.py"), default_timeout=180).run()
-        radios = [r for r in at_cloud.sidebar.radio]
-        check("sidebar 'Connect to' radio rendered", len(radios) == 1, f"found {len(radios)}")
-        if radios:
-            radios[0].set_value("live").run()
 
         exceptions = [str(e.value)[:200] for e in at_cloud.exception]
-        check("live mode with no credentials raises nothing", not exceptions, "; ".join(exceptions))
+        check("cloud run with no credentials raises nothing", not exceptions, "; ".join(exceptions))
+
+        # No demo/live radio: the app targets the workbook unconditionally.
+        check("no demo/live switch is offered",
+              len(list(at_cloud.sidebar.radio)) == 0,
+              f"{len(list(at_cloud.sidebar.radio))} radio(s) found")
 
         error_text = " ".join(e.value for e in at_cloud.error)
         check("reports the missing key instead of crashing",
-              "No service-account key configured" in error_text or "Setup incomplete" in error_text,
+              "no service-account key" in error_text.lower(),
               error_text[:160])
 
         caption_text = " ".join(c.value for c in at_cloud.sidebar.caption)
         check("points at Streamlit secrets for cloud deployments",
               "Settings" in caption_text and "Secrets" in caption_text, caption_text[:200])
 
-        check("still falls back to demo data so the UI stays usable",
-              any("Demo data" in c.value for c in at_cloud.sidebar.caption))
+        info_text = " ".join(i.value for i in at_cloud.sidebar.info)
+        check("says it is showing sample data while unconfigured",
+              "in-memory sample data" in info_text.lower(), info_text[:160])
+
+        # The unconfigured path must report BOTH halves honestly.
+        warn_text = " ".join(w.value for w in at_cloud.sidebar.warning)
+        check("reports the missing spreadsheet id too",
+              "no spreadsheet id" in warn_text.lower(), warn_text[:160])
     finally:
         _se.CREDENTIALS_FILE = _saved_creds_file
+        _se.CONFIG_FILE = _saved_config_file
         _se._st_secrets = _saved_secrets_reader
         if _saved_env_id is not None:
             os.environ["OK3D_SPREADSHEET_ID"] = _saved_env_id
