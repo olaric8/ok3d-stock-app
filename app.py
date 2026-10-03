@@ -426,10 +426,15 @@ st.markdown(
 )
 
 if backend.is_demo:
+    # This is a FALLBACK, not a mode anyone chooses: the app always targets the
+    # workbook, so reaching here means the connection failed. Say that plainly
+    # instead of pointing at a sidebar switch that no longer exists.
     st.markdown(
-        '<div class="ok-demo"><b>Demo mode</b> — everything below is in-memory sample data seeded with '
-        "OK3D product names. Nothing is written to any spreadsheet. Switch the sidebar to "
-        "<i>Shadow Copy Google Sheet</i> once <code>credentials.json</code> is in place.</div>",
+        '<div class="ok-demo"><b>Not connected — showing sample data.</b> '
+        "The workbook could not be opened, so nothing below is real and "
+        "<b>no sale recorded here will be saved</b>. Check the setup message in the "
+        "sidebar; if it is not obvious, tell whoever maintains the app rather than "
+        "recording sales.</div>",
         unsafe_allow_html=True,
     )
 
