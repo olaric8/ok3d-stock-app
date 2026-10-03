@@ -191,6 +191,48 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------- #
+# Brand header
+# --------------------------------------------------------------------------- #
+# Defined above the access gate because the sign-in screen calls it -- below the
+# gate it would be a NameError on the first page a visitor sees.
+
+
+def brand_header(subtitle: str, pill: str = "", pill_colour: str = "") -> None:
+    """
+    The app's brand header: OK3D lockup, strapline, optional status pill.
+
+    Shared by the sign-in screen and the workspace so the two cannot drift apart.
+    The lockup sits on a white plate because the wordmark is navy on white and
+    would vanish against the navy hero.
+
+    The sign-in screen passes no pill: it cannot know whether the workbook is
+    reachable, because the gate stops before any data is fetched. Claiming
+    "Connected" there would be a claim the app has not earned.
+    """
+    pill_markup = ""
+    if pill:
+        pill_markup = (
+            f'<div class="ok-pill" style="border-color:{pill_colour}">'
+            f'<span style="display:inline-block;width:.5rem;height:.5rem;'
+            f'border-radius:50%;background:{pill_colour};margin-right:.45rem;'
+            f'vertical-align:middle"></span>{pill}</div>'
+        )
+
+    st.markdown(
+        f"""
+        <div class="ok-hero">
+          <div class="ok-brand">
+            <img src="app/static/ok3d-lockup.png" alt="OK3D">
+            <p>{subtitle}</p>
+          </div>
+          {pill_markup}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Access gate
 # --------------------------------------------------------------------------- #
 # Everyone needs their own code, including the owner -- handing the owner a
@@ -237,12 +279,7 @@ def _code_matches(code: str, digest: str) -> bool:
 _ALLOWED = _allowed_users()
 
 if not st.session_state.get("ok3d_signed_in"):
-    st.markdown(
-        '<div class="ok-hero"><div><h1>\U0001f4e6 OK3D Stock App</h1>'
-        "<p>Sign in to continue \u00b7 visual sales checkout &amp; stock control</p>"
-        "</div></div>",
-        unsafe_allow_html=True,
-    )
+    brand_header("Sign in to continue \u00b7 stock &amp; sales workspace")
 
     if not _ALLOWED:
         # Fail CLOSED. An app with no allowlist configured must not be an open
@@ -586,17 +623,10 @@ _install_favicon()
 # meant nothing outside this project.
 mode_pill = "Sample data" if backend.is_demo else "Connected"
 pill_colour = "#C62828" if backend.is_demo else "#4C7E06"
-st.markdown(
-    f"""
-    <div class="ok-hero">
-      <div class="ok-brand">
-        <img src="app/static/ok3d-lockup.png" alt="OK3D">
-        <p>Stock &amp; sales workspace · built by LemonLogic</p>
-      </div>
-      <div class="ok-pill" style="border-color:{pill_colour}"><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:{pill_colour};margin-right:.45rem;vertical-align:middle"></span>{mode_pill}</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
+brand_header(
+    "Stock &amp; sales workspace · built by LemonLogic",
+    pill=mode_pill,
+    pill_colour=pill_colour,
 )
 
 if backend.is_demo:

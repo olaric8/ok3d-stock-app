@@ -10,7 +10,7 @@ Suites before any push:
 ```
 verify_engine.py   117/117   data layer, schema, guardrails, batch sales
 verify_import.py    24/24    import write path against a fake sheet
-verify_ui.py        35/35    executes app.py; cloud-path and gate regression
+verify_ui.py        40/40    executes app.py; cloud-path, gate and sign-in
 verify_auth.py       7/7     the access gate (swaps secrets.toml, then restores)
 ```
 
@@ -84,6 +84,36 @@ the 52 theme options the installed Streamlit registers.
 
 ---
 
+## Brand
+
+Colours sampled from the OK3D logo: navy `#002870`, green `#60A008`, water blue
+`#1868C8`.
+
+**The app's green is `#4C7E06`, NOT the logo's `#60A008`.** The bright green scores
+a contrast ratio of only 3.22 against white -- below the 4.5 needed for body text
+-- so white-on-green buttons would be washed out. `#4C7E06` is the same hue
+darkened, scoring 4.89. The bright green survives in the logo and app icon. Do
+not "correct" it back.
+
+Assets live in `brand/` (source artwork derivatives) and `static/` (what the app
+serves):
+
+| File | Use |
+|---|---|
+| `brand/ok3d-icon-512.png` | phone home-screen icon |
+| `brand/ok3d-icon-192.png` | smaller icon variant |
+| `brand/ok3d-lockup-white.png` | wordmark + rule + tagline, on white |
+| `static/ok3d-lockup.png` | what the hero actually loads |
+
+The hero serves the lockup as a **static file**, not base64. Streamlit reruns on
+every interaction, so inlining 165 KB would re-send the image on every tap;
+`server.enableStaticServing` fetches it once and the browser caches it.
+
+Red and amber are deliberately NOT brand colours. A reorder alert must stay red
+even though red is absent from the logo.
+
+---
+
 ## Data scripts
 
 | Script | Purpose |
@@ -111,6 +141,23 @@ All write scripts default to a dry run and print the diff first.
   triple-quoted TOML string, so the paste path cannot corrupt it.
 - **Push with `push-repo-changes.ps1`**, never by hand. It refuses to publish
   credential files and verifies `.gitignore` still protects them.
+- **Three things Community Cloud will not let the app change.** All belong to
+  the hosting layer, outside the app's DOM or `<head>`:
+  1. **"Manage app" button** -- rendered by Streamlit Cloud; app CSS cannot reach
+     it. Verified in incognito that it does NOT appear to anyone not signed in to
+     the owner's account, so the exposure is limited to accidental tampering.
+  2. **"Hosted with Streamlit" badge** -- free-tier branding; only a paid plan
+     removes it.
+  3. **Browser tab favicon** -- still Streamlit's balloon. Attempted via
+     `st.components.v1.html` injecting script that rewrites `<link rel="icon">`
+     in the parent document; **it did not work**, so the component iframe does not
+     have parent access in their environment. The script remains in `app.py`
+     (`_install_favicon`) and fails silently, which is harmless -- but do not
+     spend more time on it. The page TITLE is ours and does work.
+
+  Self-hosting would fix all three at once, plus allow a real PWA manifest for
+  full-screen launch. That is the main argument for moving off Community Cloud.
+
 - **"Manage app" cannot be hidden.** It is rendered by Streamlit Cloud's hosting
   layer, outside the app's DOM, so app CSS cannot reach it. Verified in incognito:
   it does not appear for anyone who is not signed in to the owner's account.

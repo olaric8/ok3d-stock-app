@@ -329,6 +329,40 @@ def main() -> int:
         _sheets_engine.CONFIG_FILE = _saved_cfg
         shutil.rmtree(cfg_root, ignore_errors=True)
 
+    # ---- the sign-in screen ------------------------------------------------- #
+    # The gate renders its own header, which was missed when the workspace got a
+    # logo. It is the first screen staff see, so it is worth asserting directly.
+    print("\n=== sign-in screen ===")
+    import shutil as _sh_gate
+
+    gate_root = here / "_gatecheck"
+    _sh_gate.rmtree(gate_root, ignore_errors=True)
+    (gate_root / ".streamlit").mkdir(parents=True, exist_ok=True)
+    for _name in ("app.py", "sheets_engine.py", "demo_backend.py"):
+        _sh_gate.copy(here / _name, gate_root / _name)
+    (gate_root / ".streamlit" / "config.toml").write_text(
+        "[server]\nheadless = true\n", encoding="utf-8"
+    )
+    _write_test_secrets(gate_root)
+
+    try:
+        at_signin = AppTest.from_file(str(gate_root / "app.py"), default_timeout=180).run()
+        check("sign-in screen renders without raising",
+              not list(at_signin.exception),
+              "; ".join(str(e.value)[:120] for e in at_signin.exception))
+
+        signin_md = " ".join(str(m.value) for m in at_signin.markdown)
+        check("sign-in screen carries the brand lockup",
+              "ok3d-lockup.png" in signin_md, signin_md[:160])
+        check("sign-in screen no longer uses the old text title",
+              "OK3D Stock App</h1>" not in signin_md)
+        check("sign-in asks for name and code",
+              any("Your name" in s.label for s in at_signin.selectbox))
+        check("sign-in offers no status pill before authenticating",
+              "CONNECTED" not in signin_md.upper())
+    finally:
+        _sh_gate.rmtree(gate_root, ignore_errors=True)
+
     # ---- batch UI wiring --------------------------------------------------- #
     print("\n=== batch sale UI ===")
     check("a Batch sale tab is defined",
