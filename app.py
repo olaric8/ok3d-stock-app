@@ -42,6 +42,7 @@ from sheets_engine import (
     StockRow,
     TransactionResult,
     build_engine,
+    credentials_path_from_env,
     credentials_summary,
 )
 
@@ -267,7 +268,10 @@ with st.sidebar:
         # Saying "credentials.json not found" on the cloud sends people looking
         # for a file that is not supposed to exist there, so name the right
         # remedy for each environment.
-        on_cloud = not creds.get("present") and not se_credentials_file().exists()
+        # There is no credentials.json on a cloud deployment by design -- the key
+        # arrives through Streamlit secrets. credentials_path_from_env() is
+        # already imported, so this needs no extra helper.
+        on_cloud = not creds.get("present") and not credentials_path_from_env().exists()
         if creds.get("present"):
             where = "credentials.json" if creds.get("path", "").endswith("credentials.json") else "Streamlit secrets"
             st.success(f"Service account: {creds.get('client_email', 'n/a')}  (via {where})")
