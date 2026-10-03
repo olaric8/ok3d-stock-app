@@ -36,3 +36,10 @@ access-codes.csv
 
 # --- personal access codes: never commit ---
 access-block.txt
+
+# --- generated analysis output (reproducible from the scripts) ---
+demand-clean.csv
+minimum-stock-final.csv
+minimum-stock-proposal.csv
+opening-balance-fix-*.csv
+import-preview-*.csv

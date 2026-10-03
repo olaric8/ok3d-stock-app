@@ -1,130 +1,139 @@
 # OK3D Stock App — resume notes
 
-Living document. Updated after each working session.
+- App: `https://ok3d-stock.streamlit.app`
+- Repo: `github.com/olaric8/ok3d-stock-app` (public — Community Cloud requires it)
+- Workbook: `OK3D_Shadow_Database` — 64 products, 493 units
+- Local: `C:\Users\USER\OneDrive\Documents\deepseek-harness\default-workspace\ok3d-stock-app`
 
-- URL: `https://ok3d-stock.streamlit.app` (add to phone home screen)
-- Repo: `github.com/olaric8/ok3d-stock-app` (public — Streamlit Cloud requires it)
-- Workbook: `OK3D_Shadow_Database` → 65 products, 462 units
-- Local project: `C:\Users\USER\OneDrive\Documents\deepseek-harness\default-workspace\ok3d-stock-app`
-
----
-
-## Done in session 2 (polish + batch sales)
-
-- **Batch sales.** One customer, several products, one transaction. The engine
-  gained `record_sale_batch()` and a `BatchSaleResult`; the Sales Ledger gets one
-  row per product sharing a single Transaction ID, so a basket reads as one
-  transaction. All validation happens before any write — an unknown product, a
-  non-positive quantity, or insufficient stock refuses the whole basket and
-  leaves the sheet untouched. Duplicate lines merge rather than double-charging.
-- **`use_container_width` removed** — 9 occurrences replaced with
-  `width='stretch'`. The app log is now clean of deprecation noise.
-- **Streamlit's toolbar hidden** via CSS (`stToolbar`, `stDecoration`,
-  `stAppDeployButton`), removing the top-right Share / star / pencil icons and
-  the GitHub link that led out of the app.
-- **Premium theme** in `.streamlit/config.toml`: rounded corners, softer borders,
-  Inter type stack, larger metric values, reconciled status palette. Option names
-  were **verified against the 52 theme options this Streamlit build registers** —
-  ten of my first attempts were invalid and silently ignored.
-- Dead `total_value` calculation removed from the basket view. `StockRow` carries
-  no price field, so a `getattr` guard would have shown a confident `0`.
-
-Suites now: **engine 117/117 · import 24/24 · UI 22/22**
+Suites before any push:
 
 ```
-verify_engine.py    data layer, schema, guardrails, id precedence, batch sales
-verify_import.py    the import write path, against a fake sheet
-verify_ui.py        executes app.py; cloud-path regression; batch UI wiring
+verify_engine.py   117/117   data layer, schema, guardrails, batch sales
+verify_import.py    24/24    import write path against a fake sheet
+verify_ui.py        35/35    executes app.py; cloud-path and gate regression
+verify_auth.py       7/7     the access gate (swaps secrets.toml, then restores)
 ```
 
-Run all three before any push. They have caught real bugs repeatedly.
+---
+
+## PARKED: let it run for two weeks
+
+Decision taken at the end of this session. The app is feature-complete for shop
+use; what it lacks is **its own demand history**. Its Sales Ledger holds a handful
+of entries because it went live this week.
+
+Once there are two or three weeks of real transactions, the app can rank the
+reorder list by actual velocity instead of inferring it. That was the next
+planned piece of work and it is deliberately deferred until the data exists.
+
+**What to look at when returning:**
+
+1. Does the reorder list still read as noise? It shows ~44 lines, of which 39 are
+   dormant products at zero stock. The planned fix is three filters on the
+   dashboard: hide zero-stock lines with no sales, show only fast movers, and
+   "show at most N" set per session by what can be funded.
+2. Are the new minimums behaving? Fast movers at 5, everything else at 2.
+3. Any stockouts on the five fast movers that matter? EXCEL 40G, KLIN 170G,
+   MATCHES, XTREME 145G, G/MAMA 800G.
 
 ---
 
-## Still open
+## Done this session
 
-- **Every product has `Minimum stock = 10`, identically.** That single fixed
-  threshold is why 53 of 64 lines read REORDER. For slow movers it is simply
-  wrong: `G/MAMA 1.7KG` holds 1 unit against a minimum of 10. Proposed but not
-  done: set per-product minimums from actual turnover, which would cut the
-  reorder list to lines that genuinely need action. **A reorder flag staff do not
-  trust is worse than no flag.**
-- **39 of 64 products are genuinely out of stock** (confirmed by the owner, not
-  an import fault). The dashboard is correct; this is a restocking or catalogue
-  question, not a software one.
-- **Test rows in the Sales Ledger** to clear before staff rely on it:
-  `OK3D-20261003-012030-OK4W` (EMEKA) and `OK3D-20261003-012709-7NE6`
-  ("Ledger Write Test", mine). Confirm with the owner first — one entry may be a
-  real sale.
-- **No way to delete a product from the UI.** Discontinued lines need
-  `tidy_catalogue.py` or a manual sheet edit.
-- **Only tested on desktop.** One real basket sale on a phone is still worth
-  doing before staff use it in anger.
-- **SKUs still differ from production's scheme** (shadow `OK3D-0013` vs
-  production `OK3D-015` for the same product). Harmless while the two stay
-  separate; matters if they are ever reconciled.
+**Access control (the urgent one).** Per-person sign-in codes, no email addresses
+required. Only SHA-256 hashes live in `ok3d_users` in Streamlit secrets; the codes
+are in the git-ignored `access-codes.csv`. Codes do not expire — revocation is
+deleting a line and redeploying, so a leaver loses access without disturbing
+anyone else. The owner has a code and no bypass, deliberately.
 
----
+**Batch sales.** One customer, several products, one transaction ID. Per-line
+remove and quantity +/- in the basket.
 
-## Data corrections applied (this session)
+**Crash fix.** A variable named `flagged` was rebound from StockRow objects to
+strings inside the batch receipt, so any batch sale crashed the dashboard.
 
-- **`G/PRO 75G`** — opening balance 0 → 31, from production's `Stock Summary`.
-  After the fix, matched units agree exactly: **493 both sides**.
-- **`supa`** — deleted. A lowercase duplicate of `SUPA 50G` (row 16, 69 units,
-  3 real sales), with zero movement and no ledger reference.
-- **`G/PRO 850G` → `G/PRO 800G`** — renamed; the product was renamed in the
-  business.
+**Sidebar stripped for shop use.** No demo/live switch (staff could park the app
+in demo mode and lose every sale to memory), no "Reset demo data", the workbook-id
+box hidden once an id resolves, and Streamlit's toolbar hidden by CSS.
 
-Important correction for future sessions: **the "41 zero-stock lines" were never
-an import bug.** A dry run of `fix_opening_balances.py` showed 62 of 63 rows
-needed no change — production's own `Stock Summary` carried the same zeros. The
-shadow copy was faithful all along. Do not "fix" those numbers again.
+**Premium theme** in `.streamlit/config.toml`, with option names verified against
+the 52 theme options the installed Streamlit registers.
 
----
-## Polishing ideas not yet done
-
-1. **Demo-mode notice wording.** Still says *"Switch the sidebar to Shadow Copy
-   Google Sheet once \credentials.json\ is in place"* — wrong for the cloud,
-   where the key lives in secrets. Reword once, correctly for both environments.
-2. **Hero and CSS block.** All bespoke styling sits in the CSS string at the top
-   of \pp.py\ (hero gradient, metric cards, alert blocks, receipts). That is the
-   file to touch for further looks.
-3. **Mobile layout.** Sidebar starts expanded; consider collapsing it on phones.
-   Check tap targets in the batch basket, which carries more controls than the
-   single-sale form.
+**Data corrections.**
+- `G/PRO 75G` opening balance 0 → 31; matched units now agree exactly with
+  production at 493.
+- `supa` deleted — a lowercase duplicate of `SUPA 50G`, with no movement and no
+  ledger reference.
+- `G/PRO 850G` → `G/PRO 800G` (renamed in the business).
+- **Minimums rewritten: fast movers 5, everything else 2.** Was a flat 10 across
+  all 64 lines, which flagged 53 of them. Now 44.
 
 ---
 
-## Things worth remembering about this setup
+## Corrections to earlier claims (do not repeat these)
 
-- **Secrets live only in Streamlit → Settings → Secrets.** Not in the repo.
-  `credentials.json` and `.streamlit/secrets.toml` are both git-ignored —
-  verified with `git check-ignore`. Never commit either.
+- **The "41 zero-stock lines" were never an import bug.** A dry run of
+  `fix_opening_balances.py` showed 62 of 63 rows needed no change — production's
+  own `Stock Summary` carried the same zeros. The owner has since confirmed those
+  products are genuinely out of stock. Do not try to "fix" those numbers again.
+- **The 1,044-unit MAGIK 80G "sale" is not an error.** The business records stock
+  through an automated WhatsApp/Telegram bot; a movement cannot be edited, so a
+  mistake is corrected by posting the opposite movement. That pair is a reversal
+  and nets to zero. `analyse_demand.py` neutralises such pairs automatically —
+  there are two in the log (1,044 x MAGIK 80G, 3 x G/MAMA 45G).
+
+---
+
+## Data scripts
+
+| Script | Purpose |
+|---|---|
+| `analyse_demand.py` | neutralises reversal pairs, classifies fast/slow/dormant, writes `demand-clean.csv` |
+| `propose_minimums.py` | applies the owner's thresholds, writes `minimum-stock-final.csv` |
+| `apply_minimums.py` | writes column D; `--apply` to commit, verifies by re-reading |
+| `fix_opening_balances.py` | syncs opening balances from production; `--apply` |
+| `tidy_catalogue.py` | deletes/renames sheet rows safely; `--apply` |
+| `make_access_codes.py` | regenerates codes and the hashed allowlist |
+| `make-secrets-block-b64.ps1` | rebuilds the Streamlit secrets block |
+
+All write scripts default to a dry run and print the diff first.
+
+---
+
+## Setup facts worth remembering
+
+- **Secrets live only in Streamlit → Settings → Secrets.** Never committed.
+  `credentials.json` and `.streamlit/secrets.toml` are both git-ignored.
 - **The workbook id is in `.streamlit/config.toml` under `[ok3d]`**, not in
-  secrets. It's a pointer, not a credential, and git delivers it intact. The
-  paste path in the Secrets editor kept splitting `key = "value"` across lines.
+  secrets — it is a pointer, not a credential, and git delivers it intact. The
+  Secrets editor kept splitting `key = "value"` across lines.
 - **The service-account key is base64, folded across many lines** inside a
-  triple-quoted TOML string. That format absorbs the line breaks this paste path
-  inserts. Regenerate with `make-secrets-block-b64.ps1` if it ever needs redoing.
-- **The app is gated by per-person access codes** (no emails needed). Only
-  SHA-256 hashes live in `ok3d_users` in Streamlit secrets; the codes themselves
-  are in the git-ignored `access-codes.csv`. Regenerate or revoke with
-  `make_access_codes.py`. Codes do **not** expire — revocation is deleting a line
-  and redeploying, so a leaver loses access without disturbing anyone else.
+  triple-quoted TOML string, so the paste path cannot corrupt it.
 - **Push with `push-repo-changes.ps1`**, never by hand. It refuses to publish
   credential files and verifies `.gitignore` still protects them.
+- **"Manage app" cannot be hidden.** It is rendered by Streamlit Cloud's hosting
+  layer, outside the app's DOM, so app CSS cannot reach it. Verified in incognito:
+  it does not appear for anyone who is not signed in to the owner's account.
+- **The "Hosted with Streamlit" badge** is free-tier branding; only a paid plan
+  removes it. Streamlit Community Cloud has no paid tier — the paid route is
+  Streamlit in Snowflake, which is a consumption subscription, not a one-off fee.
 
 ---
 
-## Traps that cost time last session
+## Traps that cost time
 
 - `$PSScriptRoot` is **empty** when PowerShell runs a script via `-File`, so it
   cannot appear in a parameter default. Resolve it in the body.
 - `$ErrorActionPreference = 'Stop'` turns native command stderr into *terminating*
   errors. Any `git` call must route through the `Invoke-Git` wrapper.
-- Streamlit Cloud secrets are UI-only — no API, no CLI. The **Secrets
-  diagnostics** expander in the sidebar exists so we can see which keys the
-  running app actually has, instead of guessing from screenshots.
-- **Running the suite is not proof.** Twice a change shipped untested while all
-  checks passed, because the checks only exercised demo mode. New code paths
-  need a check that actually reaches them.
+- Passing an array to a PowerShell script via `-File` does not work; `@(...)`
+  arrives as separate tokens. Keep file lists inside the script.
+- **A widget inside `st.form` does not rerun until submit**, so a submit button
+  disabled on that widget's value can never be enabled.
+- **`@st.cache_resource` is shared across runs in one process.** A test that
+  simulates an unconfigured environment must clear the cache first, or it
+  silently measures the previous run.
+- **Running the suite is not proof.** Three separate bugs shipped while every
+  check passed, because the checks never executed the branch that broke: demo
+  mode hid a `NameError`, and the batch receipt's variable shadowing was only
+  reachable after a sale.
