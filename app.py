@@ -59,7 +59,9 @@ st.set_page_config(
     page_title="OK3D Stock App | LemonLogic",
     page_icon="📦",
     layout="wide",
-    initial_sidebar_state="expanded",
+    # Collapsed: on a phone an expanded sidebar covers half the screen before any
+    # stock is visible. Staff open it when they need to change who is handling.
+    initial_sidebar_state="collapsed",
 )
 
 CUSTOM_CSS = """
@@ -214,18 +216,13 @@ CUSTOM_CSS = """
     .ok-section span.t { font-size: 16px; }
     .ok-section span.s { font-size: 12px; }
 
-    /* Five tab labels do not fit; shorten them and let the bar scroll so
-       "Products" is reachable rather than clipped away. */
-    div[data-testid="stTabs"] { overflow-x: auto; }
-    div[data-testid="stTabs"] [data-baseweb="tab-list"] {
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      scrollbar-width: none;
-    }
-    div[data-testid="stTabs"] [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
+    /* Labels are already short; this only trims padding and type so all five
+       sit comfortably. The earlier attempt used [data-baseweb="tab-list"], which
+       is not the structure Streamlit renders -- it uses data-testid="stTabs"
+       with its own scroll controls -- so that rule did nothing. */
     div[data-testid="stTabs"] button {
       font-size: 12.5px;
-      padding: 8px 9px;
+      padding: 8px 8px;
       white-space: nowrap;
     }
 
@@ -803,19 +800,21 @@ def render_receipt(result: TransactionResult, kind: str = "sale") -> None:
 # Tabs
 # --------------------------------------------------------------------------- #
 
+# Labels are deliberately short: five tabs have to fit across a phone. Longer
+# wording wrapped or clipped "Products" off the end entirely.
 tab_checkout, tab_dashboard, tab_ledger, tab_stockin, tab_products = st.tabs(
     [
-        "🛒 Checkout",
-        "📊 Stock dashboard",
-        "🧾 Sales ledger",
-        "📥 Stock in",
-        "🗂️ Products",
+        "Checkout",
+        "Dashboard",
+        "Ledger",
+        "Stock in",
+        "Products",
     ]
 )
 
 # ------------------------------- checkout ---------------------------------- #
 with tab_checkout:
-    sub_single, sub_batch = st.tabs(["🛒 Single sale", "🧺 Batch sale (multiple products)"])
+    sub_single, sub_batch = st.tabs(["Single sale", "Batch sale"])
 
 # --------------------------- single-product sale --------------------------- #
 with sub_single:

@@ -329,6 +329,54 @@ def main() -> int:
         _sheets_engine.CONFIG_FILE = _saved_cfg
         shutil.rmtree(cfg_root, ignore_errors=True)
 
+    # ---- tab labels must fit a phone --------------------------------------- #
+    # Five tabs across 390px leaves roughly 70px each. A label longer than this
+    # clips its neighbour, which is exactly how "Products" became unreachable.
+    # Read the labels from the AST so the check follows the code.
+    import ast as _ast
+
+    _tab_labels: list[str] = []
+    for _node in _ast.walk(_ast.parse(app_source)):
+        if (
+            isinstance(_node, _ast.Call)
+            and isinstance(_node.func, _ast.Attribute)
+            and _node.func.attr == "tabs"
+            and _node.args
+            and isinstance(_node.args[0], _ast.List)
+        ):
+            for _item in _node.args[0].elts:
+                if isinstance(_item, _ast.Constant) and isinstance(_item.value, str):
+                    _tab_labels.append(_item.value)
+
+    # The budget depends on how many tabs share the width: five tabs across
+    # 390px get roughly 70px each, two tabs get far more. A flat limit flagged
+    # "Single sale" (11 chars) even though it is one of only two sub-tabs.
+    check("tab labels were found", len(_tab_labels) >= 7,
+          f"found {len(_tab_labels)}: {_tab_labels}")
+
+    _by_group: dict[int, list[str]] = {}
+    for _node in _ast.walk(_ast.parse(app_source)):
+        if (
+            isinstance(_node, _ast.Call)
+            and isinstance(_node.func, _ast.Attribute)
+            and _node.func.attr == "tabs"
+            and _node.args
+            and isinstance(_node.args[0], _ast.List)
+        ):
+            _labels = [
+                i.value for i in _node.args[0].elts
+                if isinstance(i, _ast.Constant) and isinstance(i.value, str)
+            ]
+            if _labels:
+                _by_group[len(_labels)] = _labels
+
+    _too_long: list[str] = []
+    for _count, _labels in _by_group.items():
+        _budget = 10 if _count >= 4 else 14
+        _too_long += [f"{t!r} ({_count} tabs, budget {_budget})" for t in _labels if len(t) > _budget]
+    check("every tab label is short enough to fit a phone",
+          not _too_long, f"too long: {_too_long}")
+
     # ---- the sign-in screen ------------------------------------------------- #
     # The gate renders its own header, which was missed when the workspace got a
     # logo. It is the first screen staff see, so it is worth asserting directly.
@@ -366,7 +414,7 @@ def main() -> int:
     # ---- batch UI wiring --------------------------------------------------- #
     print("\n=== batch sale UI ===")
     check("a Batch sale tab is defined",
-          "Batch sale (multiple products)" in app_source)
+          '"Batch sale"' in app_source)
     check("the basket confirm control exists",
           "Confirm batch sale" in app_source)
     check("the basket clear control exists",
