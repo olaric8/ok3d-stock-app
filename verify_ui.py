@@ -366,10 +366,12 @@ def main() -> int:
         check("says it is showing sample data while unconfigured",
               "in-memory sample data" in info_text.lower(), info_text[:160])
 
-        # The unconfigured path must report BOTH halves honestly.
+        # The unconfigured path must report BOTH halves honestly. The wording
+        # depends on WHY the id is missing: a key present but empty reads
+        # differently from a key that is absent altogether.
         warn_text = " ".join(w.value for w in at_cloud.sidebar.warning)
-        check("reports the missing spreadsheet id too",
-              "no spreadsheet id" in warn_text.lower(), warn_text[:160])
+        check("reports the spreadsheet id problem too",
+              "spreadsheet id" in warn_text.lower(), warn_text[:160])
     finally:
         _se.CREDENTIALS_FILE = _saved_creds_file
         _se.CONFIG_FILE = _saved_config_file

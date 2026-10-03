@@ -42,8 +42,11 @@ from sheets_engine import (
     StockRow,
     TransactionResult,
     build_engine,
+    CONFIG_FILE,
     credentials_path_from_env,
     credentials_summary,
+    spreadsheet_id_from_config_file,
+    spreadsheet_id_from_env,
 )
 
 # --------------------------------------------------------------------------- #
@@ -69,6 +72,11 @@ CUSTOM_CSS = """
   [data-testid="stToolbar"] { display: none !important; }
   [data-testid="stDecoration"] { display: none !important; }
   [data-testid="stAppDeployButton"] { display: none !important; }
+  /* Streamlit Cloud's "Manage app" button sits in the bottom-right of a hosted
+     app and opens the settings/secrets panel. Hiding it keeps staff inside the
+     app; it is still reachable from the Streamlit console for the owner. */
+  [data-testid="stToolbarActionButton"] { display: none !important; }
+  .stToolbarActionButton { display: none !important; }
 
   /* hero */
   .ok-hero {
@@ -257,6 +265,11 @@ with st.sidebar:
     creds_path = credentials_path_from_env()
     on_cloud = not creds.get("present") and not creds_path.exists()
 
+    try:
+        _keys_for_detail = set(dict(st.secrets).keys())
+    except Exception:  # noqa: BLE001
+        _keys_for_detail = set()
+
     # ---------------------------------------------------------------- setup -- #
     # Shown only when something is genuinely wrong, so it stays actionable.
     if not creds.get("present"):
@@ -283,18 +296,26 @@ with st.sidebar:
             help="The id of the OK3D Shadow Copy workbook - never the live trading sheet.",
         ).strip()
         if not st.session_state["spreadsheet_id"]:
-            st.warning("Setup: no spreadsheet id")
-            try:
-                _keys = set(dict(st.secrets).keys())
-            except Exception:  # noqa: BLE001
-                _keys = set()
+            # Exactly one message, no empty input left sitting above it. The
+            # diagnoses are ordered by how specific they are.
+            _keys = _keys_for_detail
+            _config_id = spreadsheet_id_from_config_file()
             if "spreadsheet_id" in _keys:
+                st.warning("Setup: the spreadsheet id in secrets is empty")
                 st.caption(
-                    "Found `spreadsheet_id` in secrets but it resolved to an empty value - "
-                    "check that line for a stray quote or trailing text."
+                    "The key exists but carries no value, so there is nothing to open. "
+                    "Give it one line, `spreadsheet_id = \"<id>\"`, with the quotes."
+                )
+            elif not _config_id:
+                st.warning("Setup: no spreadsheet id")
+                st.caption(
+                    "Neither secrets nor `config.toml` supplied a workbook id. Add "
+                    "`spreadsheet_id` under `[ok3d]` in `.streamlit/config.toml`, or the "
+                    "first line of **Settings \u2192 Secrets**."
                 )
             else:
-                st.caption("`spreadsheet_id` is not among the keys the app can see.")
+                st.warning("Setup: no spreadsheet id")
+                st.caption("An id resolved but the workbook could not be opened.")
 
     # ------------------------------------------------------------ connection -- #
     backend, error_kind, error_message = load_backend(
@@ -314,6 +335,19 @@ with st.sidebar:
         st.error(titles.get(error_kind, "Connection failed"))
         with st.expander("Full detail", expanded=error_kind in {"safety", "schema"}):
             st.code(error_message, language=None)
+
+            # Show which source supplied a workbook id. The id is a pointer, not a
+            # credential, and it is already public in the repository -- printing it
+            # here saves a round of screenshot ping-pong when setup misbehaves.
+            st.markdown("**Workbook id resolution**")
+            _cfg = spreadsheet_id_from_config_file()
+            st.write(f"- environment `{SPREADSHEET_ID_ENV}`: "
+                     f"{'set' if __import__('os').environ.get(SPREADSHEET_ID_ENV) else 'not set'}")
+            st.write(f"- secrets `spreadsheet_id`: "
+                     f"{'present' if 'spreadsheet_id' in _keys_for_detail else 'absent'}")
+            st.write(f"- `config.toml` at `{CONFIG_FILE}`: "
+                     f"{('found ' + _cfg) if _cfg else 'no id found'}")
+            st.write(f"- **resolved: {spreadsheet_id_from_env() or 'NOTHING'}**")
 
             # The secrets read-out lives inside the error path only: it names the
             # keys the app can see, which is what fixes a broken deployment and is
@@ -839,11 +873,16 @@ with sub_batch:
             )
             for line in receipt.lines
         )
-        flagged = [line.product for line in receipt.lines if line.reorder == REORDER_FLAG]
+        # Named `reorder_names`, NOT `flagged`: `flagged` above holds the
+        # dashboard's list of StockRow objects, and rebinding it here to strings
+        # made the dashboard read `.product` off a str and crash the page.
+        reorder_names = [
+            line.product for line in receipt.lines if line.reorder == REORDER_FLAG
+        ]
         note = (
             f"<div class='row' style='margin-top:8px'><b>Now REORDER</b>"
-            f"<span style='color:#D63031;font-weight:700'>{', '.join(flagged)}</span></div>"
-            if flagged
+            f"<span style='color:#D63031;font-weight:700'>{', '.join(reorder_names)}</span></div>"
+            if reorder_names
             else ""
         )
         st.markdown(
