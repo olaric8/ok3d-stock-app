@@ -172,6 +172,29 @@ def _materialise_secret_credentials() -> Path | None:
         return None
 
     payload = secrets.get("gcp_service_account") or secrets.get("credentials")
+
+    # Preferred, wrapper-proof route: the whole service-account JSON base64
+    # encoded. Base64 is a single unbroken line, so a rich-text paste path
+    # cannot reflow it -- which is what breaks the PEM key in the TOML table
+    # form. Both routes end up as the same dict.
+    if payload is None:
+        encoded = secrets.get("gcp_service_account_b64")
+        if isinstance(encoded, str) and encoded.strip():
+            import base64
+            import json
+
+            cleaned = "".join(encoded.split())  # tolerate stray whitespace
+            for decoder in (base64.b64decode, base64.urlsafe_b64decode):
+                try:
+                    payload = json.loads(decoder(cleaned).decode("utf-8"))
+                    if isinstance(payload, dict):
+                        break
+                    payload = None
+                except Exception:  # noqa: BLE001
+                    payload = None
+            if payload is None:
+                return None
+
     if payload is None:
         return None
     if isinstance(payload, str):
