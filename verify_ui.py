@@ -251,6 +251,44 @@ def main() -> int:
     missing = required - families
     check("all key widget families used", not missing, f"missing {sorted(missing)}")
 
+    # ---- config-supplied id must hide the setup box ------------------------ #
+    # Regression: the sidebar once decided "is an id configured?" from
+    # session_state alone, which only holds an EXPLICIT entry. With the id coming
+    # from config.toml the app connected fine while still showing an empty id box
+    # and a warning directly above a green "Connected" status.
+    print("\n=== config-supplied id ===")
+    import shutil
+    import sheets_engine as _sheets_engine
+    from streamlit.testing.v1 import AppTest
+
+    cfg_root = here / "_cfgcheck"
+    shutil.rmtree(cfg_root, ignore_errors=True)
+    (cfg_root / ".streamlit").mkdir(parents=True, exist_ok=True)
+    for _name in ("app.py", "sheets_engine.py", "demo_backend.py"):
+        shutil.copy(here / _name, cfg_root / _name)
+    (cfg_root / ".streamlit" / "config.toml").write_text(
+        "[server]\nheadless = true\n\n[ok3d]\n"
+        'spreadsheet_id = "1BIizam6JvfXW1YX6sxJS5pB4aKBj77Vdn09uvKmjMcg"\n',
+        encoding="utf-8",
+    )
+
+    _saved_cfg = _sheets_engine.CONFIG_FILE
+    _sheets_engine.CONFIG_FILE = cfg_root / ".streamlit" / "config.toml"
+    try:
+        at_cfg = AppTest.from_file(str(cfg_root / "app.py"), default_timeout=180).run()
+        labels = [t.label for t in at_cfg.sidebar.text_input]
+        check("config-supplied id hides the setup box",
+              "Spreadsheet ID" not in labels, f"sidebar inputs: {labels}")
+        warn_text = " ".join(w.value for w in at_cfg.sidebar.warning)
+        check("no 'no spreadsheet id' warning when config supplies one",
+              "spreadsheet id" not in warn_text.lower(), warn_text[:140])
+        check("the resolved id reaches session_state",
+              at_cfg.session_state.get("spreadsheet_id", "") != "",
+              repr(at_cfg.session_state.get("spreadsheet_id", "")))
+    finally:
+        _sheets_engine.CONFIG_FILE = _saved_cfg
+        shutil.rmtree(cfg_root, ignore_errors=True)
+
     # ---- batch UI wiring --------------------------------------------------- #
     print("\n=== batch sale UI ===")
     check("a Batch sale tab is defined",

@@ -286,9 +286,17 @@ with st.sidebar:
                 "point `OK3D_GOOGLE_CREDENTIALS` at it."
             )
 
-    if not st.session_state.get("spreadsheet_id"):
-        # The box appears ONLY when no id resolved. An always-visible field lets
-        # anyone retarget the app to a different workbook mid-shift.
+    # Resolve the id HERE, with the engine's own precedence, before anything
+    # decides whether setup is incomplete. Reading session_state alone was wrong:
+    # it holds only an explicit entry, so the app could be connected via
+    # config.toml while this block still showed an empty box and a warning.
+    _resolved_id = spreadsheet_id_from_env()
+    if _resolved_id and not st.session_state.get("spreadsheet_id"):
+        st.session_state["spreadsheet_id"] = _resolved_id
+
+    if not _resolved_id:
+        # Nothing supplied an id. The box appears ONLY in this case -- an
+        # always-visible field lets anyone retarget the app mid-shift.
         st.session_state["spreadsheet_id"] = st.text_input(
             "Spreadsheet ID",
             value="",
@@ -296,15 +304,14 @@ with st.sidebar:
             help="The id of the OK3D Shadow Copy workbook - never the live trading sheet.",
         ).strip()
         if not st.session_state["spreadsheet_id"]:
-            # Exactly one message, no empty input left sitting above it. The
-            # diagnoses are ordered by how specific they are.
-            _keys = _keys_for_detail
+            # One specific message, no empty input left sitting above it.
             _config_id = spreadsheet_id_from_config_file()
-            if "spreadsheet_id" in _keys:
+            if "spreadsheet_id" in _keys_for_detail:
                 st.warning("Setup: the spreadsheet id in secrets is empty")
                 st.caption(
-                    "The key exists but carries no value, so there is nothing to open. "
-                    "Give it one line, `spreadsheet_id = \"<id>\"`, with the quotes."
+                    "The key exists but carries no value. Give it one line, "
+                    "`spreadsheet_id = \"<id>\"`, with the quotes -- or set it under "
+                    "`[ok3d]` in `.streamlit/config.toml`."
                 )
             elif not _config_id:
                 st.warning("Setup: no spreadsheet id")
