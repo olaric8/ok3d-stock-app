@@ -43,24 +43,44 @@ Run all three before any push. They have caught real bugs repeatedly.
 
 ## Still open
 
-- **41 of 65 lines read zero stock; 55 flagged REORDER.** Cause: the import wrote
-  opening balance `0` for products with no movement in `OK3D RECENT.xlsx`. Real
-  counts live in production's `Stock Summary` tab. `fix_opening_balances.py`
-  syncs them — it matched 462 units on both sides when last run.
-- **Test rows in the Sales Ledger** to clear before staff use it:
-  `OK3D-20261003-012030-OK4W` (EMEKA, user's test) and
-  `OK3D-20261003-012709-7NE6` ("Ledger Write Test", mine, from verifying writes).
-  Note `OK3D-20261003-013427-G6V7` (ERIC, 1 × SUPA 50G) may be a **real** sale —
-  check before deleting anything.
-- **SKUs don't match production numbering.** The shadow copy auto-numbered
-  `OK3D-0001…`; production uses its own scheme (`SUPA 50G` is `OK3D-0013` here,
-  `OK3D-015` there). Harmless while the two stay separate.
-- **Mobile layout.** Sidebar starts expanded; consider collapsing it for phone
-  use and check tap targets on the checkout forms.
+- **Every product has `Minimum stock = 10`, identically.** That single fixed
+  threshold is why 53 of 64 lines read REORDER. For slow movers it is simply
+  wrong: `G/MAMA 1.7KG` holds 1 unit against a minimum of 10. Proposed but not
+  done: set per-product minimums from actual turnover, which would cut the
+  reorder list to lines that genuinely need action. **A reorder flag staff do not
+  trust is worse than no flag.**
+- **39 of 64 products are genuinely out of stock** (confirmed by the owner, not
+  an import fault). The dashboard is correct; this is a restocking or catalogue
+  question, not a software one.
+- **Test rows in the Sales Ledger** to clear before staff rely on it:
+  `OK3D-20261003-012030-OK4W` (EMEKA) and `OK3D-20261003-012709-7NE6`
+  ("Ledger Write Test", mine). Confirm with the owner first — one entry may be a
+  real sale.
+- **No way to delete a product from the UI.** Discontinued lines need
+  `tidy_catalogue.py` or a manual sheet edit.
+- **Only tested on desktop.** One real basket sale on a phone is still worth
+  doing before staff use it in anger.
+- **SKUs still differ from production's scheme** (shadow `OK3D-0013` vs
+  production `OK3D-015` for the same product). Harmless while the two stay
+  separate; matters if they are ever reconciled.
 
 ---
 
+## Data corrections applied (this session)
 
+- **`G/PRO 75G`** — opening balance 0 → 31, from production's `Stock Summary`.
+  After the fix, matched units agree exactly: **493 both sides**.
+- **`supa`** — deleted. A lowercase duplicate of `SUPA 50G` (row 16, 69 units,
+  3 real sales), with zero movement and no ledger reference.
+- **`G/PRO 850G` → `G/PRO 800G`** — renamed; the product was renamed in the
+  business.
+
+Important correction for future sessions: **the "41 zero-stock lines" were never
+an import bug.** A dry run of `fix_opening_balances.py` showed 62 of 63 rows
+needed no change — production's own `Stock Summary` carried the same zeros. The
+shadow copy was faithful all along. Do not "fix" those numbers again.
+
+---
 ## Polishing ideas not yet done
 
 1. **Demo-mode notice wording.** Still says *"Switch the sidebar to Shadow Copy
@@ -86,6 +106,11 @@ Run all three before any push. They have caught real bugs repeatedly.
 - **The service-account key is base64, folded across many lines** inside a
   triple-quoted TOML string. That format absorbs the line breaks this paste path
   inserts. Regenerate with `make-secrets-block-b64.ps1` if it ever needs redoing.
+- **The app is gated by per-person access codes** (no emails needed). Only
+  SHA-256 hashes live in `ok3d_users` in Streamlit secrets; the codes themselves
+  are in the git-ignored `access-codes.csv`. Regenerate or revoke with
+  `make_access_codes.py`. Codes do **not** expire — revocation is deleting a line
+  and redeploying, so a leaver loses access without disturbing anyone else.
 - **Push with `push-repo-changes.ps1`**, never by hand. It refuses to publish
   credential files and verifies `.gitignore` still protects them.
 
