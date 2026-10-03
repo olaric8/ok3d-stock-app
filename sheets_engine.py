@@ -1043,13 +1043,53 @@ class SheetsEngine(StockBackend):
 # --------------------------------------------------------------------------- #
 
 
+CONFIG_FILE = Path(__file__).resolve().parent / ".streamlit" / "config.toml"
+
+
+def spreadsheet_id_from_config_file() -> str:
+    """
+    Read ``[ok3d] spreadsheet_id`` from .streamlit/config.toml.
+
+    Deliberately reads the file directly rather than through st.get_option:
+    Streamlit validates and discards its own keys, and a custom section is not
+    guaranteed to survive that, whereas a plain TOML read always works. The file
+    is committed and delivered by git, so unlike a pasted Secrets block, its
+    contents cannot be reflowed on the way in.
+
+    Never raises -- a missing or malformed file simply yields "".
+    """
+    try:
+        text = CONFIG_FILE.read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        return ""
+    try:
+        import tomllib
+    except ImportError:  # Python < 3.11
+        try:
+            import tomli as tomllib  # type: ignore
+        except ImportError:
+            return ""
+    try:
+        data = tomllib.loads(text)
+    except Exception:  # noqa: BLE001
+        return ""
+    section = data.get("ok3d")
+    if not isinstance(section, dict):
+        return ""
+    return str(section.get("spreadsheet_id", "") or "").strip()
+
+
 def spreadsheet_id_from_env() -> str:
     """
     Resolve the target spreadsheet id.
 
-    Precedence: environment variable, then Streamlit secrets. Returns "" when
-    neither is set -- there is no compiled-in fallback, so the engine can never
-    quietly target a workbook nobody chose.
+    Precedence:
+      1. OK3D_SPREADSHEET_ID environment variable (local overrides)
+      2. spreadsheet_id in Streamlit secrets      (cloud, if the paste survived)
+      3. [ok3d] spreadsheet_id in config.toml     (committed, paste-proof)
+
+    Returns "" only when none is available -- there is still no compiled-in
+    constant, so the engine can never target a workbook nobody configured.
     """
     from_env = os.environ.get(SPREADSHEET_ID_ENV, "").strip()
     if from_env:
@@ -1057,7 +1097,7 @@ def spreadsheet_id_from_env() -> str:
     from_secrets = str(_st_secrets().get("spreadsheet_id", "") or "").strip()
     if from_secrets:
         return from_secrets
-    return ""  # no target configured -- connect() will refuse loudly
+    return spreadsheet_id_from_config_file()
 
 
 def credentials_path_from_env() -> Path:
@@ -1152,6 +1192,7 @@ __all__ = [
     "compute_reorder_status",
     "credentials_path_from_env",
     "credentials_summary",
+    "spreadsheet_id_from_config_file",
     "make_transaction_id",
     "next_sku",
     "spreadsheet_id_from_env",

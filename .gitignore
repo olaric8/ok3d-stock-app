@@ -27,3 +27,6 @@ verify-out.txt
 
 # --- exports produced by the app ---
 *.log
+
+# --- local git staging folder used by the push scripts ---
+.stage-ok3d/

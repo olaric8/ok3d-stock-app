@@ -1,9 +1,6 @@
 # ---------------------------------------------------------------------------
 # Streamlit configuration for the OK3D Stock App.
 #
-# Contains no secrets -- those live in the Streamlit Cloud secrets manager
-# (see .streamlit/secrets.toml.example).
-#
 # WHY headless = true MATTERS
 # ---------------------------
 # `server.headless = false` tells Streamlit to try opening a browser window.
@@ -31,3 +28,23 @@ primaryColor = "#12704F"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F4F6F5"
 textColor = "#0B3D2E"
+
+# ---------------------------------------------------------------------------
+# OK3D application settings
+#
+# Streamlit ignores unknown sections, so this is a safe home for our own
+# configuration -- and unlike the Secrets editor, this file is edited locally
+# and delivered by git, so no paste path can mangle it.
+#
+# spreadsheet_id is a POINTER, not a credential: it is already public in this
+# repository. All data access still requires the service-account key, which
+# lives only in the Streamlit secrets store and is never committed.
+#
+# Resolution order for the target workbook:
+#   1. OK3D_SPREADSHEET_ID environment variable  (local overrides)
+#   2. spreadsheet_id in Streamlit secrets       (Cloud, when the paste survives)
+#   3. spreadsheet_id here                       (reliable fallback)
+# ---------------------------------------------------------------------------
+
+[ok3d]
+spreadsheet_id = "1BIizam6JvfXW1YX6sxJS5pB4aKBj77Vdn09uvKmjMcg"
