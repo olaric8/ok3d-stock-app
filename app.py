@@ -262,10 +262,36 @@ with st.sidebar:
 
     creds = credentials_summary()
     if mode_choice == "live":
+        # A local run reads credentials.json from the project root; a cloud run
+        # has no such file and reads the key from Streamlit secrets instead.
+        # Saying "credentials.json not found" on the cloud sends people looking
+        # for a file that is not supposed to exist there, so name the right
+        # remedy for each environment.
+        on_cloud = not creds.get("present") and not se_credentials_file().exists()
         if creds.get("present"):
-            st.success(f"credentials.json found · {creds.get('client_email', 'n/a')}")
+            where = "credentials.json" if creds.get("path", "").endswith("credentials.json") else "Streamlit secrets"
+            st.success(f"Service account: {creds.get('client_email', 'n/a')}  (via {where})")
+        elif on_cloud:
+            st.error("No service-account key configured")
+            st.caption(
+                "This looks like a cloud deployment: there is no credentials.json here "
+                "by design. Add the key to **Settings → Secrets** (see "
+                "`.streamlit/secrets.toml.example`), or run "
+                "`make-secrets-block.ps1` locally to build the block."
+            )
         else:
             st.error("credentials.json not found in the project root")
+            st.caption(
+                "Local run: save the service-account key as `credentials.json` beside app.py, "
+                "or set `OK3D_GOOGLE_CREDENTIALS` to its path."
+            )
+
+        if not st.session_state.get("spreadsheet_id"):
+            st.warning("No spreadsheet id set")
+            st.caption(
+                "Add `spreadsheet_id = \"<the Shadow Copy id>\"` to **Settings → Secrets**, "
+                "or paste it in the box above (that box is not persisted)."
+            )
 
     backend, error_kind, error_message = load_backend(
         st.session_state["mode"], st.session_state["spreadsheet_id"]
