@@ -29,6 +29,52 @@ backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F4F6F5"
 textColor = "#0B3D2E"
 
+# --- premium feel --------------------------------------------------------- #
+# Native theme options, so they apply consistently to every widget instead of
+# being bolted on with CSS that breaks whenever Streamlit's DOM changes.
+# Names verified against the 52 options this Streamlit build registers in
+# config.py -- a wrong name is silently ignored and logs a startup warning.
+baseRadius = "large"
+buttonRadius = "large"
+borderColor = "#E3E9E6"
+showWidgetBorder = true
+showSidebarBorder = true
+linkColor = "#12704F"
+linkUnderline = false
+codeBackgroundColor = "#F4F6F5"
+
+# Softer, more current type. The stack degrades gracefully if a face is absent,
+# so nothing is downloaded and the app keeps working offline.
+font = "Inter, Segoe UI, system-ui, -apple-system, sans-serif"
+headingFont = "Inter, Segoe UI, system-ui, -apple-system, sans-serif"
+codeFont = "JetBrains Mono, Consolas, monospace"
+baseFontSize = 16
+baseFontWeight = 400
+codeFontSize = "0.85rem"
+
+# Larger values suit a dashboard read at arm's length on a shop tablet.
+metricValueFontSize = "2.1rem"
+metricValueFontWeight = 700
+headingFontSizes = { h1 = "2.1rem", h2 = "1.5rem", h3 = "1.2rem" }
+headingFontWeights = { h1 = 700, h2 = 700, h3 = 700 }
+
+# Neutralise Streamlit's built-in palette so status colours come from ours.
+# Each hue has Color (solid), BackgroundColor (tint) and TextColor (readable on
+# the tint); only the hues this app actually uses are set.
+redColor = "#D63031"
+redBackgroundColor = "#FDECEA"
+redTextColor = "#B32424"
+greenColor = "#12704F"
+greenBackgroundColor = "#E8F5EF"
+greenTextColor = "#0B3D2E"
+orangeColor = "#E17055"
+orangeBackgroundColor = "#FDF0EC"
+orangeTextColor = "#B34A31"
+yellowColor = "#F1C40F"
+yellowBackgroundColor = "#FEF9E7"
+yellowTextColor = "#8A6D0B"
+grayColor = "#7F8C8D"
+
 # ---------------------------------------------------------------------------
 # OK3D application settings
 #

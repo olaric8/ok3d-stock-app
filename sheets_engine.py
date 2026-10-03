@@ -68,7 +68,7 @@ import os
 import random
 import re
 import string
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
@@ -451,6 +451,31 @@ class TransactionResult:
     message: str = ""
 
 
+@dataclass
+class BatchSaleResult:
+    """
+    Outcome of a multi-product sale: one customer, one receipt, N products.
+
+    ``transaction_id`` is shared by every ledger row the sale produced, so the
+    basket can be traced back as a single transaction.
+    """
+
+    ok: bool
+    transaction_id: str
+    lines: list[TransactionResult] = field(default_factory=list)
+    customer: str = ""
+    handled_by: str = ""
+    message: str = ""
+
+    @property
+    def total_units(self) -> int:
+        return sum(line.quantity for line in self.lines)
+
+    @property
+    def product_count(self) -> int:
+        return len(self.lines)
+
+
 # --------------------------------------------------------------------------- #
 # Backend: shared business rules
 # --------------------------------------------------------------------------- #
@@ -491,6 +516,24 @@ class StockBackend:
 
     def _append_ledger(self, entry: dict[str, Any]) -> None:
         raise NotImplementedError
+
+    @staticmethod
+    def _ledger_entry(
+        txn_id: str,
+        product: str,
+        quantity: int,
+        customer: str,
+        handled_by: str,
+    ) -> dict[str, Any]:
+        """One Sales Ledger row. Shared by single and batch sales."""
+        return {
+            "Timestamp": f"{datetime.now():%Y-%m-%d %H:%M:%S}",
+            "Transaction ID": txn_id,
+            "Product name": product,
+            "Quantity Sold": quantity,
+            "Customer Name": customer.strip(),
+            "Handled By": handled_by.strip(),
+        }
 
     def _invalidate(self) -> None:
         self._cache.clear()
@@ -603,14 +646,7 @@ class StockBackend:
         # 1. Write the audit record first, so a crash mid-way leaves evidence
         #    rather than a silent stock movement.
         self._append_ledger(
-            {
-                "Timestamp": f"{datetime.now():%Y-%m-%d %H:%M:%S}",
-                "Transaction ID": txn_id,
-                "Product name": row.product,
-                "Quantity Sold": quantity,
-                "Customer Name": customer.strip(),
-                "Handled By": handled_by.strip(),
-            }
+            self._ledger_entry(txn_id, row.product, quantity, customer, handled_by)
         )
 
         # 2. Apply the deduction in one batched update (F, G and H together).
@@ -640,6 +676,132 @@ class StockBackend:
             handled_by=handled_by.strip(),
             reorder=row.reorder,
             message=f"Sold {quantity} x {row.product}",
+        )
+
+    def record_sale_batch(
+        self,
+        lines: Sequence[tuple[str, int]],
+        customer: str = "",
+        handled_by: str = "",
+    ) -> BatchSaleResult:
+        """
+        Sell several products to one customer as a single transaction.
+
+        ``lines`` is a sequence of ``(product, quantity)`` pairs. Duplicate
+        products are merged, so a basket cannot list the same item twice.
+
+        Everything is validated before anything is written: an unknown product,
+        a non-positive quantity, or insufficient stock raises :class:`StockError`
+        naming every offending line, and the sheet is left untouched.
+
+        Ledger rows share one Transaction ID so the basket reads as one
+        transaction. Ledger rows are written before the stock updates, so a
+        failure mid-way leaves evidence rather than a silent stock movement.
+        """
+        # ---- merge duplicates, preserving order --------------------------- #
+        merged: dict[str, int] = {}
+        for product, quantity in lines:
+            name = (product or "").strip()
+            if not name:
+                continue
+            merged[name] = merged.get(name, 0) + as_quantity(quantity)
+
+        if not merged:
+            raise StockError("Add at least one product before confirming the sale.")
+
+        bad_quantities = [name for name, qty in merged.items() if qty <= 0]
+        if bad_quantities:
+            raise StockError(
+                "Quantity must be greater than zero for: " + ", ".join(sorted(bad_quantities))
+            )
+
+        # ---- resolve every product, collecting ALL problems -------------- #
+        resolved: list[tuple[StockRow, int]] = []
+        missing: list[str] = []
+        oversold: list[str] = []
+
+        for name, quantity in merged.items():
+            row = self.get_stock(name)
+            if row is None:
+                missing.append(name)
+                continue
+            if quantity > row.current:
+                oversold.append(f"{row.product} (asked {quantity}, {row.current} in stock)")
+                continue
+            resolved.append((row, quantity))
+
+        if missing:
+            raise StockError(
+                "Not in the Current Stock tab: " + ", ".join(sorted(missing)) + ". "
+                "Nothing was written."
+            )
+        if oversold:
+            raise StockError(
+                "Not enough stock for: " + "; ".join(oversold) + ". Nothing was written."
+            )
+
+        txn_id = make_transaction_id()
+        customer_clean = customer.strip()
+        handler_clean = handled_by.strip()
+
+        # ---- 1. ledger first: one row per product, one shared txn id ----- #
+        try:
+            for row, quantity in resolved:
+                self._append_ledger(
+                    self._ledger_entry(txn_id, row.product, quantity, customer_clean, handler_clean)
+                )
+        except Exception as exc:  # noqa: BLE001
+            raise EngineError(
+                f"Could not write transaction {txn_id} to the Sales Ledger "
+                f"({type(exc).__name__}: {exc}). No stock was changed."
+            ) from exc
+
+        # ---- 2. apply every stock movement in one batched update --------- #
+        results: list[TransactionResult] = []
+        for row, quantity in resolved:
+            before = row.current
+            row.sales += quantity
+            row.with_derived_values()
+            results.append(
+                TransactionResult(
+                    ok=True,
+                    transaction_id=txn_id,
+                    product=row.product,
+                    quantity=quantity,
+                    stock_before=before,
+                    stock_after=row.current,
+                    sales_total=row.sales,
+                    customer=customer_clean,
+                    handled_by=handler_clean,
+                    reorder=row.reorder,
+                    message=f"Sold {quantity} x {row.product}",
+                )
+            )
+
+        planned: list[tuple[int, int, Any]] = []
+        for (row, _quantity) in resolved:
+            planned.extend(self._stock_cell_plan(row))
+
+        try:
+            self._write_stock_cells(planned)
+        except Exception as exc:  # noqa: BLE001
+            affected = ", ".join(f"row {row.row_number} ('{row.product}')" for row, _ in resolved)
+            raise EngineError(
+                f"Transaction {txn_id} was written to the Sales Ledger, but the stock "
+                f"update failed: {type(exc).__name__}: {exc}\n"
+                f"  Reconcile manually: {affected}. Each line's Total sales/issue should "
+                f"increase by the quantity sold."
+            ) from exc
+        finally:
+            self._invalidate()
+
+        return BatchSaleResult(
+            ok=True,
+            transaction_id=txn_id,
+            lines=results,
+            customer=customer_clean,
+            handled_by=handler_clean,
+            message=f"Sold {len(results)} product line(s) to {customer_clean or 'walk-in'}",
         )
 
     def record_receipt(
@@ -1184,6 +1346,7 @@ __all__ = [
     "StockBackend",
     "StockError",
     "StockRow",
+    "BatchSaleResult",
     "TransactionResult",
     "as_int",
     "as_quantity",

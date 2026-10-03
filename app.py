@@ -62,6 +62,14 @@ CUSTOM_CSS = """
   .block-container { padding-top: 1.4rem; padding-bottom: 3rem; max-width: 1550px; }
   #MainMenu, footer, header [data-testid="stStatusWidget"] { visibility: hidden; }
 
+  /* Hide Streamlit's own toolbar -- the Share / star / pencil / GitHub icons in
+     the top-right corner. They are platform chrome, not app UI: on a shop
+     tablet they invite staff into the Streamlit editor, and the GitHub icon
+     leads out of the app entirely. */
+  [data-testid="stToolbar"] { display: none !important; }
+  [data-testid="stDecoration"] { display: none !important; }
+  [data-testid="stAppDeployButton"] { display: none !important; }
+
   /* hero */
   .ok-hero {
     background: linear-gradient(120deg, #0B3D2E 0%, #12704F 55%, #F2A93B 145%);
@@ -158,6 +166,8 @@ for _key, _value in {
     "spreadsheet_id": os.environ.get(SPREADSHEET_ID_ENV, "").strip(),
     "staff": "Chidi",
     "receipt": None,
+    "batch_receipt": None,
+    "basket": [],
 }.items():
     st.session_state.setdefault(_key, _value)
 
@@ -334,11 +344,11 @@ with st.sidebar:
 
     st.divider()
     st.markdown("### 🔄 Data")
-    if st.button("Refresh from source", use_container_width=True):
+    if st.button("Refresh from source", width='stretch'):
         load_backend.clear()
         st.rerun()
     if isinstance(backend, DemoBackend):
-        if st.button("Reset demo data", use_container_width=True):
+        if st.button("Reset demo data", width='stretch'):
             backend.reset()
             st.session_state["receipt"] = None
             st.rerun()
@@ -522,6 +532,10 @@ tab_checkout, tab_dashboard, tab_ledger, tab_stockin, tab_products = st.tabs(
 
 # ------------------------------- checkout ---------------------------------- #
 with tab_checkout:
+    sub_single, sub_batch = st.tabs(["🛒 Single sale", "🧺 Batch sale (multiple products)"])
+
+# --------------------------- single-product sale --------------------------- #
+with sub_single:
     section("Visual checkout", "pick the product by name — SKUs are handled for you")
 
     if st.session_state.get("receipt"):
@@ -603,7 +617,7 @@ with tab_checkout:
             submitted = st.form_submit_button(
                 "✅ Confirm sale",
                 type="primary",
-                use_container_width=True,
+                width='stretch',
                 disabled=blocked or selected is None,
             )
 
@@ -633,6 +647,200 @@ with tab_checkout:
             "and the stock check happens before anything is written."
         )
 
+# ------------------------------ batch sale --------------------------------- #
+with sub_batch:
+    section(
+        "Batch sale",
+        "one customer, several products — recorded as a single transaction",
+    )
+
+    basket = st.session_state.setdefault("basket", [])
+
+    add_col, view_col = st.columns([3, 4], gap="large")
+
+    with add_col:
+        st.markdown("**Add items**")
+        products = backend.list_products()
+        if not products:
+            st.warning("No products yet. Add one from the **Products** tab first.")
+        else:
+            with st.form("basket-add-form", clear_on_submit=False):
+                basket_product = st.selectbox(
+                    "Product name",
+                    options=products,
+                    index=None,
+                    placeholder="Type to search, e.g. VIVA 800G",
+                    key="basket-product",
+                )
+                basket_qty = st.number_input(
+                    "Quantity", min_value=1, max_value=1_000_000, value=1, step=1,
+                    key="basket-qty",
+                )
+                basket_customer = st.text_input(
+                    "Customer name", placeholder="e.g. Mama Ngozi Stores",
+                    key="basket-customer",
+                )
+                add_submitted = st.form_submit_button(
+                    "➕ Add to basket", type="primary", width="stretch",
+                    disabled=basket_product is None,
+                )
+
+            if add_submitted and basket_product:
+                existing = next(
+                    (item for item in basket if item["product"].casefold() == basket_product.casefold()),
+                    None,
+                )
+                if existing:
+                    existing["quantity"] += int(basket_qty)
+                else:
+                    basket.append({"product": basket_product, "quantity": int(basket_qty)})
+                st.session_state["basket"] = basket
+                st.rerun()
+
+            picked = backend.get_stock(basket_product) if basket_product else None
+            if picked is not None:
+                st.caption(
+                    f"In stock now: **{picked.current}** · minimum {picked.minimum} · "
+                    f"SKU `{picked.sku or '—'}`"
+                )
+
+    with view_col:
+        st.markdown("**Basket**")
+
+        if not basket:
+            st.info("No items yet. Add products on the left, then confirm the sale.")
+        else:
+            # --- evaluate every line against LIVE stock -------------------- #
+            issues: list[str] = []
+            rows_for_view: list[dict[str, object]] = []
+            total_units = 0
+            will_reorder = 0
+
+            for index, item in enumerate(basket):
+                row = backend.get_stock(item["product"])
+                if row is None:
+                    issues.append(f"**{item['product']}** is no longer in Current Stock.")
+                    continue
+                wanted = int(item["quantity"])
+                total_units += wanted
+                short = wanted > row.current
+                after = max(row.current - wanted, 0)
+                if short:
+                    issues.append(
+                        f"**{row.product}** — only {row.current} in stock, {wanted} requested."
+                    )
+                elif after <= row.minimum:
+                    will_reorder += 1
+                rows_for_view.append(
+                    {
+                        "#": index + 1,
+                        "Product": row.product,
+                        "Qty": wanted,
+                        "In stock": row.current,
+                        "After": after,
+                        "Status": "⛔ short" if short else ("🟡 hits minimum" if after <= row.minimum else "🟢 ok"),
+                    }
+                )
+
+            st.dataframe(
+                rows_for_view,
+                hide_index=True,
+                width="stretch",
+                column_config={"Qty": st.column_config.NumberColumn(format="%d"),
+                               "In stock": st.column_config.NumberColumn(format="%d"),
+                               "After": st.column_config.NumberColumn(format="%d")},
+            )
+
+            summary_cols = st.columns(3)
+            summary_cols[0].metric("Product lines", f"{len(rows_for_view)}")
+            summary_cols[1].metric("Total units", f"{total_units}")
+            summary_cols[2].metric(
+                "Will need reorder",
+                f"{will_reorder}",
+                delta="action after sale" if will_reorder else "all stay healthy",
+                delta_color="inverse" if will_reorder else "normal",
+            )
+
+            if issues:
+                st.markdown(
+                    '<div class="ok-block">⛔ <b>This basket cannot be sold as it stands.</b><br>'
+                    + "<br>".join(issues)
+                    + "<br>Adjust the quantities, or record a delivery on the <b>Stock in</b> tab."
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
+
+            act_left, act_right = st.columns(2)
+            with act_left:
+                if st.button("🗑️ Clear basket", width="stretch", key="basket-clear"):
+                    st.session_state["basket"] = []
+                    st.rerun()
+            with act_right:
+                confirm = st.button(
+                    "✅ Confirm batch sale",
+                    type="primary",
+                    width="stretch",
+                    disabled=bool(issues) or not rows_for_view,
+                    key="basket-confirm",
+                )
+
+            if confirm:
+                try:
+                    batch = backend.record_sale_batch(
+                        [(item["product"], int(item["quantity"])) for item in basket],
+                        customer=(basket_customer or "").strip(),
+                        handled_by=st.session_state["staff"],
+                    )
+                    st.session_state["batch_receipt"] = batch
+                    st.session_state["basket"] = []
+                    st.session_state.pop("basket-customer", None)
+                    st.toast(
+                        f"{batch.product_count} product(s), {batch.total_units} unit(s) sold",
+                        icon="🧺",
+                    )
+                    st.rerun()
+                except StockError as exc:
+                    st.error(f"Batch blocked: {exc}")
+                except EngineError as exc:
+                    st.error(f"Could not complete the batch: {exc}")
+
+    receipt = st.session_state.get("batch_receipt")
+    if receipt is not None:
+        st.divider()
+        rows_html = "".join(
+            "<div class='row'><b>{qty} × {product}</b>"
+            "<span style='opacity:.75'>{before} → {after} on hand</span></div>".format(
+                qty=line.quantity,
+                product=line.product,
+                before=line.stock_before,
+                after=line.stock_after,
+            )
+            for line in receipt.lines
+        )
+        flagged = [line.product for line in receipt.lines if line.reorder == REORDER_FLAG]
+        note = (
+            f"<div class='row' style='margin-top:8px'><b>Now REORDER</b>"
+            f"<span style='color:#D63031;font-weight:700'>{', '.join(flagged)}</span></div>"
+            if flagged
+            else ""
+        )
+        st.markdown(
+            f'<div class="ok-receipt"><div class="hdr">✅ Batch sale recorded</div>'
+            f"<div class='row'><b>Transaction ID</b><code>{receipt.transaction_id}</code></div>"
+            f"<div class='row'><b>Customer</b>{receipt.customer or '—'}</div>"
+            f"<div class='row'><b>Handled by</b>{receipt.handled_by or '—'}</div>"
+            f"<div class='row'><b>Total units</b><span class='big'>{receipt.total_units}</span></div>"
+            f"{rows_html}{note}</div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "All lines above share one Transaction ID, so the Sales Ledger shows them "
+            "as a single transaction."
+        )
+        if st.button("Start next batch", key="basket-clear-receipt"):
+            st.session_state["batch_receipt"] = None
+            st.rerun()
+
 # ------------------------------ dashboard ---------------------------------- #
 with tab_dashboard:
     section("Executive stock dashboard", "lines in light red have hit their minimum")
@@ -658,7 +866,7 @@ with tab_dashboard:
         frame = stock_dataframe(view_rows)
         st.dataframe(
             frame,
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             height=min(680, 44 + 35 * len(frame)),
             column_config={
@@ -694,7 +902,7 @@ with tab_dashboard:
                 for r in flagged
             ]
         )
-        st.dataframe(restock, use_container_width=True, hide_index=True)
+        st.dataframe(restock, width='stretch', hide_index=True)
     else:
         st.success("Nothing needs reordering.")
 
@@ -708,7 +916,7 @@ with tab_ledger:
         frame = ledger_dataframe(ledger_rows)
         st.dataframe(
             frame,
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             height=min(700, 44 + 35 * len(frame)),
             column_config={
@@ -751,7 +959,7 @@ with tab_stockin:
                     "Note (optional)", placeholder="e.g. Supplier invoice 4471",
                     key="rec-note",
                 )
-            r_submitted = st.form_submit_button("📥 Add to stock", type="primary", use_container_width=True)
+            r_submitted = st.form_submit_button("📥 Add to stock", type="primary", width='stretch')
 
         if r_submitted and r_product:
             try:
@@ -776,7 +984,7 @@ with tab_products:
             p_opening = col_c.number_input("Opening balance", min_value=0, value=0, step=1)
             p_minimum = col_d.number_input("Minimum stock", min_value=0, value=10, step=1)
             p_receipts = st.number_input("Total receipts (optional)", min_value=0, value=0, step=1)
-            p_submitted = st.form_submit_button("➕ Add product", type="primary", use_container_width=True)
+            p_submitted = st.form_submit_button("➕ Add product", type="primary", width='stretch')
 
         if p_submitted:
             try:
@@ -799,7 +1007,7 @@ with tab_products:
         )
         if missing:
             st.write("Missing: " + ", ".join(r.product for r in missing[:8]))
-            if st.button("Backfill SKUs now", use_container_width=True):
+            if st.button("Backfill SKUs now", width='stretch'):
                 try:
                     filled = backend.ensure_skus()
                     st.success(f"Filled {filled} SKU(s).")
