@@ -106,6 +106,11 @@ CUSTOM_CSS = """
     .ok-brand img { height: 46px; padding: 8px 12px; }
     .ok-brand p { font-size: 12px; }
   }
+  /* Brand plate on the left, status pill on the right. The hero already wraps,
+     so this only takes effect once there is width for two columns -- on a phone
+     the pill drops below the logo instead of being squeezed. */
+  .ok-hero > div:first-child { flex: 1 1 auto; }
+  .ok-hero > .ok-pill { margin-left: auto; align-self: center; }
   .ok-hero h1 { color: #FFFFFF; font-size: 29px; font-weight: 800; margin: 0; letter-spacing: -.4px; }
   .ok-hero p { color: rgba(255,255,255,.82); margin: 6px 0 0; font-size: 14px; }
   .ok-pill {
@@ -316,6 +321,56 @@ def money_free(value: float) -> str:
     return f"{value:,.0f}"
 
 
+# --------------------------------------------------------------------------- #
+# Favicon
+# --------------------------------------------------------------------------- #
+# The tab icon is set in the document <head> that Streamlit Cloud's hosting layer
+# generates, which app CSS cannot reach. st.components.v1.html renders into a
+# same-origin iframe, so script inside it can reach the parent document and
+# rewrite the <link rel="icon"> entries.
+#
+# This is best-effort: if a browser blocks parent access, the tab keeps
+# Streamlit's icon and nothing else is affected. The title is unaffected either
+# way -- set_page_config already sets it.
+def _install_favicon() -> None:
+    """Point the browser tab at the OK3D icon."""
+    try:
+        import streamlit.components.v1 as components
+
+        components.html(
+            """
+            <script>
+            (function () {
+              try {
+                var doc = window.parent.document;
+                var href = "app/static/ok3d-icon-192.png";
+                // Absolute, resolved against the parent page so the iframe's own
+                // base URL cannot misdirect it.
+                var abs = new URL(href, doc.location.href).href;
+                var links = doc.querySelectorAll(
+                  'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]'
+                );
+                if (links.length === 0) {
+                  var made = doc.createElement('link');
+                  made.rel = 'icon';
+                  made.href = abs;
+                  doc.head.appendChild(made);
+                } else {
+                  links.forEach(function (l) { l.href = abs; });
+                }
+              } catch (e) {
+                /* cross-origin or sandboxed: keep the default icon */
+              }
+            })();
+            </script>
+            """,
+            height=0,
+            width=0,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def section(title: str, subtitle: str = "") -> None:
     st.markdown(
         f'<div class="ok-section"><span class="t">{title}</span>'
@@ -520,6 +575,8 @@ with st.sidebar:
     if st.button("Refresh from source", width="stretch"):
         load_backend.clear()
         st.rerun()
+
+_install_favicon()
 
 # --------------------------------------------------------------------------- #
 # Hero
