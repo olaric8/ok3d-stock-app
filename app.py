@@ -19,6 +19,7 @@ job, which is what keeps the write-safety checks in one place.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from datetime import datetime
 from typing import Any, Optional
@@ -162,6 +163,92 @@ CUSTOM_CSS = """
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+# --------------------------------------------------------------------------- #
+# Access gate
+# --------------------------------------------------------------------------- #
+# Everyone needs their own code, including the owner -- handing the owner a
+# bypass would create exactly the shared-secret weakness this replaces.
+#
+# Codes do NOT expire. Streamlit Cloud sleeps idle apps, so expiry would mean
+# staff hitting "code expired" every morning while doing nothing about the risk
+# that matters. Revocation is explicit: delete the person's line, redeploy.
+#
+# Hashes only: the secrets entry holds SHA-256 digests, so a usable code is not
+# recoverable from the repo, the Streamlit console, or a screenshot.
+
+
+def _allowed_users() -> dict[str, str]:
+    """``{display name: sha256 hex}`` from the ``ok3d_users`` secret."""
+    try:
+        raw = str(st.secrets.get("ok3d_users", "") or "")
+    except Exception:  # noqa: BLE001
+        return {}
+    users: dict[str, str] = {}
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _, digest = line.partition("=")
+        name = name.strip()
+        digest = digest.strip().lower()
+        if name and len(digest) == 64:
+            users[name] = digest
+    return users
+
+
+def _code_matches(code: str, digest: str) -> bool:
+    """Compare a typed code against a stored digest in constant time."""
+    import hmac
+
+    try:
+        candidate = hashlib.sha256(code.strip().encode("utf-8")).hexdigest()
+    except Exception:  # noqa: BLE001
+        return False
+    return hmac.compare_digest(candidate, digest)
+
+
+_ALLOWED = _allowed_users()
+
+if not st.session_state.get("ok3d_signed_in"):
+    st.markdown(
+        '<div class="ok-hero"><div><h1>\U0001f4e6 OK3D Stock App</h1>'
+        "<p>Sign in to continue \u00b7 visual sales checkout &amp; stock control</p>"
+        "</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    if not _ALLOWED:
+        # Fail CLOSED. An app with no allowlist configured must not be an open
+        # app -- that would be the very hole this gate exists to close.
+        st.error("This app has no access list configured, so nobody can sign in.")
+        st.caption(
+            "Add `ok3d_users` in **Settings \u2192 Secrets** (one `Name = sha256hash` "
+            "per line) and reboot the app."
+        )
+        st.stop()
+
+    st.caption("Enter your name and the access code you were given.")
+    with st.form("ok3d-signin", clear_on_submit=False):
+        _who = st.selectbox("Your name", options=sorted(_ALLOWED), index=None,
+                            placeholder="Select your name")
+        _code = st.text_input("Access code", type="password",
+                              placeholder="OK3D-XXXX-XXXX")
+        _go = st.form_submit_button("Sign in", type="primary", width="stretch")
+
+    if _go:
+        if _who and _code and _code_matches(_code, _ALLOWED[_who]):
+            st.session_state["ok3d_signed_in"] = True
+            st.session_state["staff"] = _who
+            st.session_state.pop("ok3d_attempts", None)
+            st.rerun()
+        else:
+            st.session_state["ok3d_attempts"] = st.session_state.get("ok3d_attempts", 0) + 1
+            st.error("That name and code do not match. Check for typos and try again.")
+
+    st.caption("Codes are personal. Do not share yours \u2014 tell the owner if someone asks for it.")
+    st.stop()
 
 
 # --------------------------------------------------------------------------- #

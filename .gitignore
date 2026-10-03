@@ -30,3 +30,9 @@ verify-out.txt
 
 # --- local git staging folder used by the push scripts ---
 .stage-ok3d/
+
+# --- personal access codes: never commit ---
+access-codes.csv
+
+# --- personal access codes: never commit ---
+access-block.txt

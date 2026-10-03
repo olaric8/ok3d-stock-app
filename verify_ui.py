@@ -205,6 +205,29 @@ def build_stub() -> Any:
     return stub
 
 
+# --------------------------------------------------------------------------- #
+# ACCESS GATE support
+# --------------------------------------------------------------------------- #
+# The app refuses to render without a valid personal code, so these tests sign in
+# first. The gate's own behaviour is verified separately by verify_auth.py.
+import hashlib as _hashlib
+
+TEST_CODE = "OK3D-TEST-CODE"
+TEST_USERS = {
+    "Kunle": _hashlib.sha256(TEST_CODE.encode("utf-8")).hexdigest(),
+    "Onyin": _hashlib.sha256(b"OK3D-SECOND-CODE").hexdigest(),
+}
+TEST_ALLOWLIST = 'ok3d_users = """\n' + "".join(
+    f"{name} = {digest}\n" for name, digest in TEST_USERS.items()
+) + '"""\n'
+
+
+def _write_test_secrets(root: pathlib.Path) -> None:
+    """The gate reads st.secrets, so temp app copies need an allowlist on disk."""
+    (root / ".streamlit").mkdir(parents=True, exist_ok=True)
+    (root / ".streamlit" / "secrets.toml").write_text(TEST_ALLOWLIST, encoding="utf-8")
+
+
 def main() -> int:
     here = Path(__file__).resolve().parent
     app_source = (here / "app.py").read_text(encoding="utf-8")
@@ -217,6 +240,20 @@ def main() -> int:
     print(f"\nExecuting {app_path.name} ...")
 
     stub = build_stub()
+    # Let the app read an allowlist, and mark this run signed in so it renders the
+    # workspace instead of the sign-in screen.
+    class _StubSecrets:
+        def get(self, key, default=None):
+            return TEST_ALLOWLIST if key == "ok3d_users" else default
+
+        def __getitem__(self, key):
+            return TEST_ALLOWLIST
+
+        def __iter__(self):
+            return iter(["ok3d_users"])
+
+    stub.secrets = _StubSecrets()
+    stub.session_state["ok3d_signed_in"] = True
     saved = sys.modules.get("streamlit")
     sys.modules["streamlit"] = stub
     # Captured so the cloud-path test below can clear load_backend's cache, which
@@ -271,11 +308,14 @@ def main() -> int:
         'spreadsheet_id = "1BIizam6JvfXW1YX6sxJS5pB4aKBj77Vdn09uvKmjMcg"\n',
         encoding="utf-8",
     )
+    _write_test_secrets(cfg_root)
 
     _saved_cfg = _sheets_engine.CONFIG_FILE
     _sheets_engine.CONFIG_FILE = cfg_root / ".streamlit" / "config.toml"
     try:
         at_cfg = AppTest.from_file(str(cfg_root / "app.py"), default_timeout=180).run()
+        at_cfg.session_state["ok3d_signed_in"] = True
+        at_cfg.run()
         labels = [t.label for t in at_cfg.sidebar.text_input]
         check("config-supplied id hides the setup box",
               "Spreadsheet ID" not in labels, f"sidebar inputs: {labels}")
@@ -349,6 +389,7 @@ def main() -> int:
     (cloud_root / ".streamlit" / "config.toml").write_text(
         "[server]\nheadless = true\n", encoding="utf-8"
     )
+    _write_test_secrets(cloud_root)
 
     import sheets_engine as _se
 
@@ -382,6 +423,8 @@ def main() -> int:
             _cached_loader.clear()
 
         at_cloud = _AppTest.from_file(str(cloud_root / "app.py"), default_timeout=180).run()
+        at_cloud.session_state["ok3d_signed_in"] = True
+        at_cloud.run()
 
         exceptions = [str(e.value)[:200] for e in at_cloud.exception]
         check("cloud run with no credentials raises nothing", not exceptions, "; ".join(exceptions))
