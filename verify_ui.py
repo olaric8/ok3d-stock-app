@@ -257,6 +257,22 @@ def main() -> int:
           "Clear basket" in app_source)
     check("the confirm path calls record_sale_batch",
           "backend.record_sale_batch(" in app_source)
+    # A selector inside st.form never triggers a rerun, so a submit button
+    # disabled on its value can never be enabled. Assert the ordering.
+    _batch = app_source[app_source.index("with sub_batch:"):]
+    _batch = _batch[: _batch.index("# ------------------------------ dashboard")]
+    _sel = _batch.find("basket_product = st.selectbox")
+    _form = _batch.find('with st.form("basket-add-form"')
+    check("basket selector sits outside the form",
+          -1 < _sel < _form,
+          f"selector at {_sel}, form at {_form}")
+    check("basket quantity sits outside the form",
+          -1 < _batch.find("basket_qty = st.number_input") < _form)
+    check("basket submit button is not conditionally disabled",
+          "disabled=basket_product is None" not in _batch)
+    check("no dead total_value metric in the basket",
+          "total_value" not in _batch)
+
     check("no deprecated use_container_width remains",
           "use_container_width" not in app_source,
           f"{app_source.count('use_container_width')} occurrence(s)")

@@ -664,25 +664,29 @@ with sub_batch:
         if not products:
             st.warning("No products yet. Add one from the **Products** tab first.")
         else:
+            # NOTE: the selector and quantity MUST stay outside st.form. Form
+            # widgets do not rerun until the form is submitted, so inside a form
+            # `basket_product` would still be None on the first render -- which
+            # kept the submit button disabled, and a disabled button can never
+            # submit the form. The single-sale checkout uses the same pattern.
+            basket_product = st.selectbox(
+                "Product name",
+                options=products,
+                index=None,
+                placeholder="Type to search, e.g. VIVA 800G",
+                key="basket-product",
+            )
+            basket_qty = st.number_input(
+                "Quantity", min_value=1, max_value=1_000_000, value=1, step=1,
+                key="basket-qty",
+            )
             with st.form("basket-add-form", clear_on_submit=False):
-                basket_product = st.selectbox(
-                    "Product name",
-                    options=products,
-                    index=None,
-                    placeholder="Type to search, e.g. VIVA 800G",
-                    key="basket-product",
-                )
-                basket_qty = st.number_input(
-                    "Quantity", min_value=1, max_value=1_000_000, value=1, step=1,
-                    key="basket-qty",
-                )
                 basket_customer = st.text_input(
                     "Customer name", placeholder="e.g. Mama Ngozi Stores",
                     key="basket-customer",
                 )
                 add_submitted = st.form_submit_button(
                     "➕ Add to basket", type="primary", width="stretch",
-                    disabled=basket_product is None,
                 )
 
             if add_submitted and basket_product:
