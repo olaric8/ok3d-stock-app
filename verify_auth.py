@@ -61,7 +61,16 @@ try:
     body = " ".join(m.value for m in at.markdown) + " ".join(e.value for e in at.error)
     check("app does not load without an allowlist",
           "no access list" in body.lower(), body[:160])
-    check("no product data is shown", "Products" not in body, body[:160])
+    # Text matching against the markdown is unreliable here: the app emits its
+    # own CSS as markdown, and that stylesheet contains the words "Products"
+    # and "stMetric". Count real elements instead -- that is what "the app did
+    # not load" actually means.
+    check("no KPI cards are rendered before sign-in",
+          len(list(at.metric)) == 0, f"{len(list(at.metric))} metric(s)")
+    check("no stock table is rendered before sign-in",
+          len(list(at.dataframe)) == 0, f"{len(list(at.dataframe))} dataframe(s)")
+    check("no tabs are rendered before sign-in",
+          len(list(at.tabs)) == 0, f"{len(list(at.tabs))} tab group(s)")
 
     # ---- 2. wrong code ------------------------------------------------------ #
     print("\n=== 2. wrong code ===")

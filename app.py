@@ -20,6 +20,7 @@ job, which is what keeps the write-safety checks in one place.
 from __future__ import annotations
 
 import hashlib
+import html
 import os
 from datetime import datetime
 from typing import Any, Optional
@@ -183,6 +184,59 @@ CUSTOM_CSS = """
   .ok-receipt .big { font-size: 17px; font-weight: 750; }
 
   div[data-testid="stTabs"] button { font-weight: 650; font-size: 14.5px; }
+
+  /* --------------------------------------------------------------------- */
+  /* Phone layout. The app was built on a wide canvas; staff use it only on  */
+  /* a phone, so everything below is driven by what 390px actually looked   */
+  /* like rather than guesswork.                                            */
+  /* --------------------------------------------------------------------- */
+  @media (max-width: 640px) {
+
+    /* KPI cards: two per row instead of five stacked full-width cards, which
+       pushed the reorder alert a whole screen down. */
+    div[data-testid="stHorizontalBlock"]:has(div[data-testid="stMetric"]) {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 10px !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(div[data-testid="stMetric"])
+      > div[data-testid="stColumn"] {
+      flex: 1 1 calc(50% - 5px) !important;
+      min-width: calc(50% - 5px) !important;
+      width: auto !important;
+    }
+    div[data-testid="stMetric"] { padding: 11px 13px 9px; }
+    div[data-testid="stMetricValue"] { font-size: 1.85rem; }
+    div[data-testid="stMetricLabel"] p { font-size: 10.5px !important; }
+
+    /* Section headings wrap badly at this width, so stack them. */
+    .ok-section { flex-direction: column; gap: 2px; align-items: flex-start; }
+    .ok-section span.t { font-size: 16px; }
+    .ok-section span.s { font-size: 12px; }
+
+    /* Five tab labels do not fit; shorten them and let the bar scroll so
+       "Products" is reachable rather than clipped away. */
+    div[data-testid="stTabs"] { overflow-x: auto; }
+    div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    div[data-testid="stTabs"] [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
+    div[data-testid="stTabs"] button {
+      font-size: 12.5px;
+      padding: 8px 9px;
+      white-space: nowrap;
+    }
+
+    /* Tighter chrome, so the hero is not pushed down the screen. */
+    .block-container { padding-top: .7rem !important; padding-bottom: 2rem; }
+    .ok-hero { padding: 16px 18px; border-radius: 14px; }
+    .ok-hero > .ok-pill { margin-left: 0; align-self: flex-start; }
+
+    /* Thumb-sized controls for the basket's quantity and remove buttons. */
+    .stButton > button { min-height: 42px; }
+  }
   .stButton > button, .stFormSubmitButton > button { border-radius: 9px; font-weight: 650; }
   div[data-testid="stDataFrame"] { border-radius: 10px; }
 </style>
@@ -670,7 +724,12 @@ k4.metric("Out of stock", f"{kpis['out_of_stock']}")
 k5.metric("Healthy lines", f"{kpis['healthy']}")
 
 if flagged:
-    names = " · ".join(f"**{r.product}** ({r.current}/{r.minimum})" for r in flagged[:5])
+    # Escaped, not markdown: this block passes unsafe_allow_html=True, and
+    # Streamlit skips markdown processing when raw HTML is allowed -- so
+    # "**NAME**" rendered as literal asterisks on screen.
+    names = " · ".join(
+        f"<b>{html.escape(r.product)}</b> ({r.current}/{r.minimum})" for r in flagged[:5]
+    )
     extra = f" · +{len(flagged) - 5} more" if len(flagged) > 5 else ""
     st.markdown(
         f'<div class="ok-alert">🔔 <b>{len(flagged)} line(s) at or below minimum stock:</b> {names}{extra}</div>',
@@ -985,12 +1044,18 @@ with sub_batch:
                 )
                 row_cols = st.columns([6, 2, 1])
                 with row_cols[0]:
+                    # HTML, not markdown: these blocks set unsafe_allow_html, and
+                    # Streamlit skips markdown entirely when it does -- so
+                    # "**name**" and "~~name~~" rendered as literal characters.
                     if line is None:
-                        st.markdown(f"⚠️ ~~{item['product']}~~")
+                        st.markdown(
+                            f"⚠️ <s>{html.escape(str(item['product']))}</s>",
+                            unsafe_allow_html=True,
+                        )
                     else:
                         flag = "" if line["Status"] == "🟢 ok" else f" · {line['Status']}"
                         st.markdown(
-                            f"**{line['Product']}**  \n"
+                            f"<b>{html.escape(str(line['Product']))}</b><br>"
                             f"<span style='opacity:.7;font-size:.85em'>"
                             f"{line['In stock']} in stock → {line['After']} after{flag}</span>",
                             unsafe_allow_html=True,
