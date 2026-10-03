@@ -19,9 +19,30 @@
 headless = true
 showEmailPrompt = false
 
+# Serves ./static/ under app/static/, so the brand artwork is fetched once and
+# cached by the browser rather than being inlined into every rerun's HTML as
+# base64. Streamlit reruns on every widget interaction, so inlining a 165 KB
+# image would re-send it on each tap.
+enableStaticServing = true
+
 [browser]
 # No usage statistics from a shop's own deployment.
 gatherUsageStats = false
+
+# ---------------------------------------------------------------------------
+# BRAND
+#
+# Sampled from the OK3D logo: navy #002870 (the "OK" and "D"), green #60A008
+# (the "3"), water blue #1868C8 (the splash inside the O).
+#
+# THE GREEN HERE IS NOT THE LOGO'S GREEN. #60A008 scores a contrast ratio of only
+# 3.22 against white -- below the 4.5 required for body text -- so white text on
+# a green button would be washed out and hard to read. #4C7E06 is the same hue
+# darkened, scoring 4.89. The bright green survives in the logo and the app icon,
+# where it is large and decorative and contrast rules are looser.
+#
+# Do not "correct" #4C7E06 back to #60A008.
+# ---------------------------------------------------------------------------
 
 [theme]
 primaryColor = "#002870"
@@ -29,11 +50,10 @@ backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F4F7FC"
 textColor = "#0B1B33"
 
-# --- premium feel --------------------------------------------------------- #
 # Native theme options, so they apply consistently to every widget instead of
 # being bolted on with CSS that breaks whenever Streamlit's DOM changes.
-# Names verified against the 52 options this Streamlit build registers in
-# config.py -- a wrong name is silently ignored and logs a startup warning.
+# Option names verified against the 52 theme options this build registers --
+# a wrong name is silently ignored and logs a startup warning.
 baseRadius = "large"
 buttonRadius = "large"
 borderColor = "#D8E0EE"
@@ -58,17 +78,8 @@ metricValueFontWeight = 700
 headingFontSizes = { h1 = "2.1rem", h2 = "1.5rem", h3 = "1.2rem" }
 headingFontWeights = { h1 = 700, h2 = 700, h3 = 700 }
 
-# Neutralise Streamlit's built-in palette so status colours come from ours.
-#
-# BRAND: sampled from the OK3D logo (navy #002870, green #60A008).
-#
-# The green below is #4C7E06, NOT the logo's #60A008. The bright green has a
-# contrast ratio of 3.22 against white -- below the 4.5 needed for body text, so
-# white text on a green button would be hard to read. #4C7E06 is the same hue
-# darkened to 4.89. The bright green survives in the logo and icon, where it is
-# large and decorative. so status colours come from ours.
-# Each hue has Color (solid), BackgroundColor (tint) and TextColor (readable on
-# the tint); only the hues this app actually uses are set.
+# Status palette. Red and amber are SEMANTIC and deliberately not brand colours:
+# a reorder alert must stay red even though red is not in the logo.
 redColor = "#C62828"
 redBackgroundColor = "#FDECEC"
 redTextColor = "#A31F1F"
@@ -82,6 +93,15 @@ yellowColor = "#F1C40F"
 yellowBackgroundColor = "#FEF9E7"
 yellowTextColor = "#8A6D0B"
 grayColor = "#7F8C8D"
+
+# Sidebar tinted to the brand navy family. NOTE: [theme.sidebar] does not inherit
+# every top-level theme key, so values are repeated here rather than assumed.
+[theme.sidebar]
+backgroundColor = "#F7F9FD"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0B1B33"
+borderColor = "#D8E0EE"
+primaryColor = "#002870"
 
 # ---------------------------------------------------------------------------
 # OK3D application settings
@@ -99,16 +119,6 @@ grayColor = "#7F8C8D"
 #   2. spreadsheet_id in Streamlit secrets       (Cloud, when the paste survives)
 #   3. spreadsheet_id here                       (reliable fallback)
 # ---------------------------------------------------------------------------
-
-# Sidebar tinted to match the brand navy family. NOTE: the sidebar table
-# does NOT inherit every top-level theme key, so values are repeated here
-# rather than assumed.
-[theme.sidebar]
-backgroundColor = "#F7F9FD"
-secondaryBackgroundColor = "#FFFFFF"
-textColor = "#0B1B33"
-borderColor = "#D8E0EE"
-primaryColor = "#002870"
 
 [ok3d]
 spreadsheet_id = "1BIizam6JvfXW1YX6sxJS5pB4aKBj77Vdn09uvKmjMcg"

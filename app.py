@@ -86,6 +86,26 @@ CUSTOM_CSS = """
     box-shadow: 0 12px 30px rgba(0,0,0,.22);
     display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
   }
+  /* Brand plate: the wordmark is navy on white, so it needs a white field on the
+     navy hero. Rounded to match the theme's baseRadius. */
+  .ok-brand img {
+    display: block;
+    height: 62px; width: auto;
+    background: #FFFFFF;
+    padding: 10px 16px;
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.22);
+  }
+  .ok-brand p {
+    color: rgba(255,255,255,.78);
+    margin: 10px 0 0;
+    font-size: 13.5px;
+    letter-spacing: .2px;
+  }
+  @media (max-width: 640px) {
+    .ok-brand img { height: 46px; padding: 8px 12px; }
+    .ok-brand p { font-size: 12px; }
+  }
   .ok-hero h1 { color: #FFFFFF; font-size: 29px; font-weight: 800; margin: 0; letter-spacing: -.4px; }
   .ok-hero p { color: rgba(255,255,255,.82); margin: 6px 0 0; font-size: 14px; }
   .ok-pill {
@@ -512,9 +532,9 @@ pill_colour = "#C62828" if backend.is_demo else "#4C7E06"
 st.markdown(
     f"""
     <div class="ok-hero">
-      <div>
-        <h1>📦 OK3D Stock App</h1>
-        <p>Visual sales checkout &amp; stock control · no SKUs, no chat syntax · built by LemonLogic</p>
+      <div class="ok-brand">
+        <img src="app/static/ok3d-lockup.png" alt="OK3D">
+        <p>Stock &amp; sales workspace · built by LemonLogic</p>
       </div>
       <div class="ok-pill" style="border-color:{pill_colour}"><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:{pill_colour};margin-right:.45rem;vertical-align:middle"></span>{mode_pill}</div>
     </div>
