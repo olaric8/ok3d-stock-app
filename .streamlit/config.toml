@@ -24,10 +24,10 @@ showEmailPrompt = false
 gatherUsageStats = false
 
 [theme]
-primaryColor = "#12704F"
+primaryColor = "#002870"
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F4F6F5"
-textColor = "#0B3D2E"
+secondaryBackgroundColor = "#F4F7FC"
+textColor = "#0B1B33"
 
 # --- premium feel --------------------------------------------------------- #
 # Native theme options, so they apply consistently to every widget instead of
@@ -36,12 +36,12 @@ textColor = "#0B3D2E"
 # config.py -- a wrong name is silently ignored and logs a startup warning.
 baseRadius = "large"
 buttonRadius = "large"
-borderColor = "#E3E9E6"
+borderColor = "#D8E0EE"
 showWidgetBorder = true
 showSidebarBorder = true
-linkColor = "#12704F"
+linkColor = "#0047A3"
 linkUnderline = false
-codeBackgroundColor = "#F4F6F5"
+codeBackgroundColor = "#F4F7FC"
 
 # Softer, more current type. The stack degrades gracefully if a face is absent,
 # so nothing is downloaded and the app keeps working offline.
@@ -59,14 +59,22 @@ headingFontSizes = { h1 = "2.1rem", h2 = "1.5rem", h3 = "1.2rem" }
 headingFontWeights = { h1 = 700, h2 = 700, h3 = 700 }
 
 # Neutralise Streamlit's built-in palette so status colours come from ours.
+#
+# BRAND: sampled from the OK3D logo (navy #002870, green #60A008).
+#
+# The green below is #4C7E06, NOT the logo's #60A008. The bright green has a
+# contrast ratio of 3.22 against white -- below the 4.5 needed for body text, so
+# white text on a green button would be hard to read. #4C7E06 is the same hue
+# darkened to 4.89. The bright green survives in the logo and icon, where it is
+# large and decorative. so status colours come from ours.
 # Each hue has Color (solid), BackgroundColor (tint) and TextColor (readable on
 # the tint); only the hues this app actually uses are set.
-redColor = "#D63031"
-redBackgroundColor = "#FDECEA"
-redTextColor = "#B32424"
-greenColor = "#12704F"
-greenBackgroundColor = "#E8F5EF"
-greenTextColor = "#0B3D2E"
+redColor = "#C62828"
+redBackgroundColor = "#FDECEC"
+redTextColor = "#A31F1F"
+greenColor = "#4C7E06"
+greenBackgroundColor = "#F1F7E6"
+greenTextColor = "#3F6A05"
 orangeColor = "#E17055"
 orangeBackgroundColor = "#FDF0EC"
 orangeTextColor = "#B34A31"
@@ -91,6 +99,16 @@ grayColor = "#7F8C8D"
 #   2. spreadsheet_id in Streamlit secrets       (Cloud, when the paste survives)
 #   3. spreadsheet_id here                       (reliable fallback)
 # ---------------------------------------------------------------------------
+
+# Sidebar tinted to match the brand navy family. NOTE: the sidebar table
+# does NOT inherit every top-level theme key, so values are repeated here
+# rather than assumed.
+[theme.sidebar]
+backgroundColor = "#F7F9FD"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0B1B33"
+borderColor = "#D8E0EE"
+primaryColor = "#002870"
 
 [ok3d]
 spreadsheet_id = "1BIizam6JvfXW1YX6sxJS5pB4aKBj77Vdn09uvKmjMcg"

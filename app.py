@@ -81,7 +81,7 @@ CUSTOM_CSS = """
 
   /* hero */
   .ok-hero {
-    background: linear-gradient(120deg, #0B3D2E 0%, #12704F 55%, #F2A93B 145%);
+    background: linear-gradient(120deg, #00204F 0%, #002870 48%, #1868C8 78%, #4C7E06 118%);
     border-radius: 18px; padding: 24px 30px; margin-bottom: 8px;
     box-shadow: 0 12px 30px rgba(0,0,0,.22);
     display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
@@ -96,7 +96,7 @@ CUSTOM_CSS = """
 
   /* metric cards */
   div[data-testid="stMetric"] {
-    background: rgba(128,128,128,.07); border: 1px solid rgba(128,128,128,.20);
+    background: rgba(0, 40, 112, .045); border: 1px solid rgba(0, 40, 112, .14);
     border-radius: 14px; padding: 15px 18px 13px;
   }
   div[data-testid="stMetricLabel"] p {
@@ -108,9 +108,9 @@ CUSTOM_CSS = """
   /* section heading */
   .ok-section {
     display: flex; align-items: baseline; gap: 10px; margin: 20px 0 4px;
-    padding-bottom: 8px; border-bottom: 2px solid rgba(128,128,128,.20);
+    padding-bottom: 8px; border-bottom: 2px solid rgba(0, 40, 112, .18);
   }
-  .ok-section span.t { font-size: 17px; font-weight: 750; }
+  .ok-section span.t { font-size: 17px; font-weight: 750; color: #00205A; }
   .ok-section span.s { font-size: 12.5px; opacity: .62; }
 
   /* blocks */
@@ -121,8 +121,8 @@ CUSTOM_CSS = """
   }
   .ok-alert b { color: #D63031; }
   .ok-ok {
-    background: rgba(18,112,79,.10); border: 1px solid rgba(18,112,79,.40);
-    border-left: 5px solid #12704F; border-radius: 10px; padding: 12px 16px;
+    background: rgba(76,126,6,.10); border: 1px solid rgba(76,126,6,.38);
+    border-left: 5px solid #4C7E06; border-radius: 10px; padding: 12px 16px;
     margin: 10px 0; font-size: 14px;
   }
   .ok-block {
@@ -140,7 +140,7 @@ CUSTOM_CSS = """
 
   /* product card */
   .ok-card {
-    background: rgba(128,128,128,.07); border: 1px solid rgba(128,128,128,.20);
+    background: rgba(0, 40, 112, .045); border: 1px solid rgba(0, 40, 112, .14);
     border-radius: 14px; padding: 16px 18px; margin: 10px 0 14px;
   }
   .ok-kv { font-size: 13.5px; margin: 3px 0; }
@@ -148,10 +148,10 @@ CUSTOM_CSS = """
 
   /* receipt */
   .ok-receipt {
-    background: rgba(18,112,79,.08); border: 1px solid rgba(18,112,79,.42);
+    background: rgba(76,126,6,.08); border: 1px solid rgba(76,126,6,.40);
     border-radius: 14px; padding: 18px 22px; margin: 6px 0 16px;
   }
-  .ok-receipt .hdr { font-size: 15px; font-weight: 750; color: #12704F; margin-bottom: 10px;
+  .ok-receipt .hdr { font-size: 15px; font-weight: 750; color: #3F6A05; margin-bottom: 10px;
     letter-spacing: .3px; text-transform: uppercase; }
   .ok-receipt .row { font-size: 14px; margin: 4px 0; }
   .ok-receipt .row b { opacity: .62; font-weight: 600; display: inline-block; min-width: 130px; }
@@ -472,7 +472,7 @@ with st.sidebar:
     st.markdown(
         f"<div style='display:flex;align-items:center;gap:.5rem;margin:.35rem 0'>"
         f"<span style='width:.55rem;height:.55rem;border-radius:50%;"
-        f"background:{'#12704F' if connected else '#D63031'};display:inline-block'></span>"
+        f"background:{'#4C7E06' if connected else '#D63031'};display:inline-block'></span>"
         f"<b>{'Connected' if connected else 'Not connected'}</b></div>",
         unsafe_allow_html=True,
     )
@@ -505,7 +505,10 @@ with st.sidebar:
 # Hero
 # --------------------------------------------------------------------------- #
 
-mode_pill = "Demo data" if backend.is_demo else "Shadow Copy · live"
+# Words staff recognise, matching the sidebar status line exactly. "Shadow Copy"
+# meant nothing outside this project.
+mode_pill = "Sample data" if backend.is_demo else "Connected"
+pill_colour = "#C62828" if backend.is_demo else "#4C7E06"
 st.markdown(
     f"""
     <div class="ok-hero">
@@ -513,7 +516,7 @@ st.markdown(
         <h1>📦 OK3D Stock App</h1>
         <p>Visual sales checkout &amp; stock control · no SKUs, no chat syntax · built by LemonLogic</p>
       </div>
-      <div class="ok-pill">{mode_pill}</div>
+      <div class="ok-pill" style="border-color:{pill_colour}"><span style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:{pill_colour};margin-right:.45rem;vertical-align:middle"></span>{mode_pill}</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -622,7 +625,7 @@ def render_receipt(result: TransactionResult, kind: str = "sale") -> None:
     status = (
         f"<span style='color:#D63031;font-weight:700'>REORDER</span>"
         if result.reorder == REORDER_FLAG
-        else "<span style='color:#12704F;font-weight:700'>OK</span>"
+        else "<span style='color:#4C7E06;font-weight:700'>OK</span>"
     )
     rows.append(("Reorder status", status))
 
