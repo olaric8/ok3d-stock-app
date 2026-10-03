@@ -292,10 +292,22 @@ with st.sidebar:
 
         if not st.session_state.get("spreadsheet_id"):
             st.warning("No spreadsheet id set")
-            st.caption(
-                "Add `spreadsheet_id = \"<the Shadow Copy id>\"` to **Settings → Secrets**, "
-                "or paste it in the box above (that box is not persisted)."
-            )
+            # Distinguish "absent from secrets" from "present but empty" --
+            # they have different fixes and looked identical before.
+            try:
+                _keys = set(dict(st.secrets).keys())
+            except Exception:  # noqa: BLE001
+                _keys = set()
+            if "spreadsheet_id" in _keys:
+                st.caption(
+                    "`spreadsheet_id` IS present in secrets but resolved to an empty "
+                    "value. Check that line for a stray quote or trailing text."
+                )
+            else:
+                st.caption(
+                    "`spreadsheet_id` is not among the keys the app can see. It must be the "
+                    "**first line** of **Settings → Secrets**."
+                )
 
     backend, error_kind, error_message = load_backend(
         st.session_state["mode"], st.session_state["spreadsheet_id"]
@@ -338,6 +350,36 @@ with st.sidebar:
         st.caption(f"**{backend.label}**")
         st.caption(f"Workbook: `{backend.spreadsheet_title}`")
     st.caption(f"Last read: {backend.last_read_utc or '—'}")
+
+    with st.expander("Secrets diagnostics"):
+        try:
+            visible = dict(st.secrets)
+        except Exception as exc:  # noqa: BLE001
+            visible = {}
+            st.write(f"st.secrets unreadable: {type(exc).__name__}: {exc}")
+
+        if not visible:
+            st.write("**st.secrets is empty** - nothing was loaded on this run.")
+            st.caption(
+                "If a secrets block IS saved, its TOML is probably invalid, so Streamlit "
+                "discards the whole file. The editor shows a red \"Invalid format\" "
+                "message when that happens."
+            )
+        else:
+            st.write(f"**{len(visible)} secret key(s) visible to the app:**")
+            for key in sorted(visible):
+                value = visible[key]
+                if isinstance(value, dict):
+                    detail = f"table with {len(value)} field(s)"
+                else:
+                    text = str(value)
+                    # Only shape, never content, so this is safe to screenshot.
+                    detail = f"{len(text)} chars, starts {text[:3]!r}" if text else "EMPTY"
+                mark = "✅" if key == "spreadsheet_id" else "•"
+                st.write(f"{mark} `{key}` - {detail}")
+
+            if "spreadsheet_id" not in visible:
+                st.error("`spreadsheet_id` is NOT among the keys above.")
 
 
 # --------------------------------------------------------------------------- #
